@@ -1,0 +1,53 @@
+server:
+  port: 8081
+spring:
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 47.109.28.196:8848
+  data:
+    redis:
+      port: 6379
+      password: 221796
+      host: 47.109.28.196
+      database: 0
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: 221796
+    url: jdbc:mysql://47.109.28.196:3306/online_education
+  mail:
+    host: smtp.163.com
+    username: 13408180434@163.com
+    password: PHcCAFxqUSwHquzd
+    protocol: smtps
+    port: 465
+  rabbitmq:
+    addresses: 47.109.28.196
+    port: 5672
+    username: ten
+    password: 221796
+  application:
+    name: OE-user-service
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      update-strategy: not_null
+logging:
+  level:
+    org:
+      springframework:
+        security: DEBUG
+  file:
+    path: "logs/${spring.application.name}"
+online:
+  education:
+    secret: XXssssjkewofokopweejfjfwwdlwdddhhhh
+oe:
+  auth:
+    include-paths:
+      - "/users/login"
+      - "/users/register"
+      - "/users/ask-code"

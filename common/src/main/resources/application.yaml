@@ -1,0 +1,6 @@
+oe:
+  auth:
+    include-paths:
+      - "/users/login"
+      - "/users/register"
+      - "/users/ask-code"

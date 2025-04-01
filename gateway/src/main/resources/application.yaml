@@ -1,0 +1,38 @@
+server:
+  port: 8080
+spring:
+  main:
+    web-application-type: reactive
+  application:
+    name: gateway
+  cloud:
+    nacos:
+      server-addr: 47.109.28.196:8848
+    gateway:
+      routes:
+        - id: OE-user-service
+          uri: lb://OE-user-service
+          predicates:
+            - Path=/users/**,/sign/**  # 合并路径规则
+        - id: OE-course-service
+          uri: lb://OE-course-service
+          predicates:
+            - Path=/course/**, /category/**, /tags/**
+        - id: OE-order-service
+          uri: lb://OE-order-service
+          predicates:
+            - Path=/orders/**
+        - id: OE-pay-service
+          uri: lb://OE-pay-service
+          predicates:
+            - Path=/pay/**
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    com.tenxi.filter: DEBUG
+oe:
+  auth:
+    include-paths:
+      - "/users/login"
+      - "/users/register"
+      - "/users/ask-code"
