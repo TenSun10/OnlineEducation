@@ -38,8 +38,8 @@ public class TagHandlerListener {
 
         // 2. 处理每个标签
         String[] tagNames = tags.split("#");
-        LambdaQueryWrapper<Tag> queryWrapper = new LambdaQueryWrapper<>();
         for (int i = 1; i < tagNames.length; i++) {
+            LambdaQueryWrapper<Tag> queryWrapper = new LambdaQueryWrapper<>();
             String tagName = tagNames[i];
             queryWrapper.eq(Tag::getName, tagName);
             // 2.1 查询或创建标签

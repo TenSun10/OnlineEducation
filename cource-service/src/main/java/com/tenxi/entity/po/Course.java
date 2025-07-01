@@ -1,6 +1,8 @@
 package com.tenxi.entity.po;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -25,8 +27,10 @@ public class Course {
     private float rating;
     private Integer commentCount;
     private Integer enrolledCount;
-    private LocalDateTime createAt;
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createTime;
 
     //需要利用ThreadLocal实现,每一次更新自动填充
-    private LocalDateTime updateAt;
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updateTime;
 }

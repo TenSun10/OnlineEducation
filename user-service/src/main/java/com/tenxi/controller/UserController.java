@@ -1,5 +1,6 @@
 package com.tenxi.controller;
 
+import com.tenxi.entity.dto.PasswordResetDto;
 import com.tenxi.entity.vo.AccountDetailVo;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.dto.EmailRegisterDto;
@@ -7,7 +8,10 @@ import com.tenxi.handler.ControllerHandler;
 import com.tenxi.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.java.Log;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Log
 @RestController
@@ -17,6 +21,7 @@ public class UserController {
     private ControllerHandler controllerHandler;
     @Resource
     private UserService userService;
+
 
     @RequestMapping("/ask-code")
     public RestBean<String> askCode(@RequestParam String email,
@@ -36,4 +41,15 @@ public class UserController {
         return userService.getAccount(id);
     }
 
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
+    @PostMapping("/batch")
+    RestBean<List<AccountDetailVo>> batchQueryAccounts(@RequestBody List<Long> userIds) {
+        return userService.batchUsers(userIds);
+    }
+
+    @PostMapping("/reset-password")
+    public RestBean<String> resetPassword(@RequestBody PasswordResetDto dto) {
+        return controllerHandler.messageHandler(() ->
+                userService.resetPassword(dto));
+    }
 }

@@ -2,6 +2,7 @@ package com.tenxi.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.tenxi.entity.dto.PasswordResetDto;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.Account;
 import com.tenxi.entity.vo.AccountDetailVo;
@@ -10,15 +11,14 @@ import com.tenxi.listener.MailListener;
 import com.tenxi.mapper.UserMapper;
 import com.tenxi.service.UserService;
 import jakarta.annotation.Resource;
+import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 import static com.tenxi.utils.ConstStr.VERIFY_CODE;
@@ -101,6 +101,41 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
         }
         AccountDetailVo vo = new AccountDetailVo(account.getId(), account.getEmail(), account.getAvatar(), account.getRegisterTime());
         return RestBean.successWithData(vo);
+    }
+
+    /**
+     * 根据批量id查询用户
+     * @param userIds
+     * @return
+     */
+    @Override
+    public RestBean<List<AccountDetailVo>> batchUsers(List<Long> userIds) {
+        List<Account> accounts = listByIds(userIds);
+        List<AccountDetailVo> vos = transToVo(accounts);
+        return RestBean.successWithData(vos);
+    }
+
+    /**
+     * TODO 重新设置密码
+     * @param dto
+     * @return
+     */
+    @Override
+    public String resetPassword(PasswordResetDto dto) {
+        return "";
+    }
+
+
+    private List<AccountDetailVo> transToVo(List<Account> accounts) {
+        if(accounts == null || accounts.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return accounts.stream().map(item -> {
+            AccountDetailVo vo = new AccountDetailVo();
+            BeanUtils.copyProperties(item, vo);
+            return vo;
+        }).toList();
     }
 
 

@@ -8,6 +8,8 @@ import com.tenxi.client.AccountClient;
 import com.tenxi.entity.po.Collect;
 import com.tenxi.entity.vo.CourseSimpleVO;
 import com.tenxi.mapper.CollectMapper;
+import com.tenxi.notification.entity.po.NotificationType;
+import com.tenxi.notification.service.NotificationTypeService;
 import com.tenxi.utils.BaseContext;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.dto.CoursePublishDTO;
@@ -23,15 +25,19 @@ import com.tenxi.service.CourseService;
 import jakarta.annotation.Resource;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import static com.tenxi.common.CourseConstStr.CACHE_COURSE_COLLECT_HASH;
+import static com.tenxi.common.CourseConstStr.CACHE_COURSE_COLLECT_SET;
 
 
 //TODO 将用户上传的视频存储到视频库，并在数据库中存储获取视频的uri
@@ -49,7 +55,10 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     private CategoryMapper categoryMapper;
     @Resource
     private CollectMapper collectMapper;
-
+    @Resource
+    private RedisTemplate<String, Object> redisTemplate;
+    @Resource
+    private NotificationTypeService notificationTypeService;
 
     /**
      * 老师发布课程
@@ -165,15 +174,34 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
     /**
      * 用户收藏课程
-     * 1.先将收藏的记录存储在redis中
-     * 2.使用异步线程将其写入数据库
+     * 1.先将收藏的记录存储在redis(使用set缓存）中，方便用户及时得到反馈
+     * 2.将用户操作使用Hash结构存储，定时任务写入时看最后的值
      * 目的:防止恶意点击使得数据库崩溃
      * @param id
      * @return
      */
     //TODO
     @Override
-    public RestBean<CourseVO> collectCourse(Long id) {
+    public String collectCourse(Long id) {
+        Long currentId = BaseContext.getCurrentId();
+        String key_hash = CACHE_COURSE_COLLECT_HASH + currentId;
+        String key_set = CACHE_COURSE_COLLECT_SET + currentId;
+
+        //1.修改用户操作的最后 获取当前操作类型（取反）
+        String lastAction = (String) redisTemplate.opsForHash().get(key_hash, id.toString());
+        int newAction = ("0".equals(lastAction) || lastAction == null) ? 1 : 0;
+
+        //记录最新操作
+        redisTemplate.opsForHash().put(key_hash, id.toString(), String.valueOf(newAction));
+        redisTemplate.expire(key_hash, 1, TimeUnit.HOURS);
+
+        //修改set中的值
+        if(Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(key_set, id.toString()))){
+            redisTemplate.opsForSet().remove(key_set, id.toString());
+        }else {
+            redisTemplate.opsForSet().add(key_set, id.toString());
+        }
+
         return null;
     }
 
@@ -258,6 +286,19 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
 
         // 执行更新操作
         boolean updated = update(updateWrapper);
+        if (updated) {
+            //向所有订阅了该课程的用户发送站内通知
+            Map<String, Object> event = new HashMap<>();
+            //1.拿到应该使用的通知模板的信息
+            QueryWrapper<NotificationType> notificationTypeQueryWrapper = new QueryWrapper<>();
+            notificationTypeQueryWrapper.inSql("type", "SELECT id FROM notification_type WHERE type = " + "course_up");
+            NotificationType one = notificationTypeService.getOne(notificationTypeQueryWrapper);
+            event.put("type_id", one.getId());
+            //2.放入课程id
+            event.put("course_id", id);
+            //使用消息队列异步发送信息
+            rabbitTemplate.convertAndSend("online.direct","online-education-update", event);
+        }
 
         return updated ? null : "课程未发生变更";
     }
@@ -268,35 +309,90 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
      * @return
      */
     private List<CourseVO> transVo(List<Course> course, Long userId) {
+        if (course == null) {
+            return null;
+        }
+        List<Long> publisherIds = course.stream().map(Course::getPusherId).distinct().toList();
+        Map<Long, AccountDetailVo> accountMap = accountClient.batchQueryAccounts(publisherIds).data().stream()
+                .collect(Collectors.toMap(AccountDetailVo::getId, Function.identity()));
+
         return course.stream().map(item -> {
             CourseVO vo = new CourseVO();
             BeanUtils.copyProperties(item, vo);
 
             // 获取发布者邮箱
-            RestBean<AccountDetailVo> restBean = accountClient.queryAccountById(item.getPusherId());
-            AccountDetailVo accountDetailVo = restBean.data();
-            vo.setPusherName(accountDetailVo.getEmail());
-            vo.setPusherId(accountDetailVo.getId());
-
+            AccountDetailVo accountDetailVo = accountMap.get(item.getPusherId());
+            if (accountDetailVo == null) {
+                vo.setPusherName("未知用户");
+            } else {
+                vo.setPusherName(accountDetailVo.getEmail());
+            }
+            vo.setPusherId(userId);
             // 获取课程关联的标签
             QueryWrapper<Tag> tagWrapper = new QueryWrapper<>();
             tagWrapper.inSql("id", "SELECT tag_id FROM course_tag WHERE course_id = " + item.getId());
             List<Tag> tags = tagMapper.selectList(tagWrapper);
             vo.setTags(tags);
 
-            // 查找collect表，如果收藏了isCollect字段就为1，否则为0
-            LambdaQueryWrapper<Collect> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(Collect::getCourseId, item.getId());
-            wrapper.eq(Collect::getUserId, userId);
-
-            Collect collect = collectMapper.selectOne(wrapper);
-            if (collect == null) {
-                vo.setIsCollect(0);
-            } else {
+            boolean collect = isCollect(userId, item.getId());
+            if (collect) {
                 vo.setIsCollect(1);
+            } else {
+                vo.setIsCollect(0);
             }
-
             return vo;
         }).toList();
+    }
+
+
+    private boolean isCollect(Long userId, Long courseId) {
+        //先从redis中查看用户是否收藏了该课程
+        String key = CACHE_COURSE_COLLECT_SET + userId;
+        if(Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(key, courseId.toString()))) {
+            return true;
+        }
+
+        // 查找collect表，如果收藏了isCollect字段就为1，否则为0
+        LambdaQueryWrapper<Collect> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Collect::getCourseId, courseId);
+        wrapper.eq(Collect::getUserId, userId);
+
+        Collect collect = collectMapper.selectOne(wrapper);
+        return collect != null;
+    }
+
+
+    @Scheduled(fixedDelay = 60000)
+    public void synCollectOperation() {
+        Set<String> keys = redisTemplate.keys(CACHE_COURSE_COLLECT_HASH);
+        if(keys == null) return;
+
+        for (String key : keys) {
+            //处理每一个用户的收藏的改变
+            Long userId = Long.parseLong(key.substring(21, key.length() - 1));
+            Map<Object, Object> operations = redisTemplate.opsForHash().entries(key);
+
+            List<Long> toAdd = new ArrayList<>();
+            List<Long> toRemove = new ArrayList<>();
+
+            operations.forEach((courseStrId, action) -> {
+                Long courseId = Long.parseLong(courseStrId.toString());
+                if (action.equals("1")) {
+                    toAdd.add(courseId);
+                }else {
+                    toRemove.add(courseId);
+                }
+            });
+
+            if(!toAdd.isEmpty()) {
+                collectMapper.batchInsertIgnore(userId, toAdd, LocalDateTime.now());
+            }
+            if(!toRemove.isEmpty()) {
+                collectMapper.deleteByIds(toRemove);
+            }
+
+            //处理完之后删除这个键
+            redisTemplate.delete(key);
+        }
     }
 }

@@ -21,7 +21,7 @@ public class TagController {
     private CourseService courseService;
 
 
-    //TODO 根据tag的id查询相关的课程
+    //根据tag的id查询相关的课程
     @GetMapping("/{id}")
     public RestBean<List<CourseVO>> getCoursesByTag(@PathVariable Long id) {
         return courseService.getByTag(id);

@@ -18,6 +18,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Log
@@ -86,6 +87,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
         Order item = getOne(queryWrapper);
 
+        if(item == null) {return RestBean.failure(500, "查询失败，请联系管理员");}
+
         OrderVO orderVO = transOrderToVO(item);
 
         return RestBean.successWithData(orderVO);
@@ -104,6 +107,38 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         boolean remove = remove(queryWrapper);
         if(remove) return null;
         return "取消订单失败";
+    }
+
+
+    /**
+     * 根据课程id查询所有订阅该课程的用户
+     * @param id
+     * @return
+     */
+    @Override
+    public List<Long> subscribe(Long id) {
+        List<Long> list = new ArrayList<>();
+        LambdaQueryWrapper<Order> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Order::getCourseId, id);
+        List<Order> orders = list(queryWrapper);
+        if (orders == null || orders.size() == 0) {
+            return List.of();
+        }
+        for(Order order : orders) {
+            list.add(order.getUserId());
+        }
+        return list;
+    }
+
+    @Override
+    public String changeOrderStatus(Long id) {
+        LambdaQueryWrapper<Order> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Order::getId, id);
+        Order one = getOne(queryWrapper);
+        if(one == null) return "订单号错误,请联系管理员";
+        one.setStatus(1);
+        updateById(one);
+        return null;
     }
 
     /**

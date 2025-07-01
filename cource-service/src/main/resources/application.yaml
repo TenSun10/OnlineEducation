@@ -39,9 +39,17 @@ mybatis-plus:
       update-strategy: not_null
 logging:
   level:
-    org:
-      springframework:
-        security: DEBUG
+    # 不同的框架使用不同的日志记录级别
+    root: info
+    com.tenxi: debug
+    org.springframework.web: debug
+    org.springframework.security: debug
+    com.alibaba.nacos: warn
+  # 设置控制台和日志文件中的日志展示样式
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId}] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId}] %logger{36} - %msg%n"
+  # 日志文件相关配置
   file:
     path: "logs/${spring.application.name}"
 feign:

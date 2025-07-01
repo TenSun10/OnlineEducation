@@ -1,10 +1,13 @@
 package com.tenxi.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.tenxi.entity.dto.PasswordResetDto;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.Account;
 import com.tenxi.entity.vo.AccountDetailVo;
 import com.tenxi.entity.dto.EmailRegisterDto;
+
+import java.util.List;
 
 public interface UserService extends IService<Account> {
     String askCode(String email, String type);
@@ -13,4 +16,7 @@ public interface UserService extends IService<Account> {
 
     RestBean<AccountDetailVo> getAccount(Long id);
 
+    RestBean<List<AccountDetailVo>> batchUsers(List<Long> userIds);
+
+    String resetPassword(PasswordResetDto dto);
 }

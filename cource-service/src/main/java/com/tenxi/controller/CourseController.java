@@ -11,6 +11,8 @@ import com.tenxi.service.CourseService;
 import jakarta.annotation.Resource;
 import lombok.extern.java.Log;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,21 +29,23 @@ public class CourseController {
     @Resource
     private CourseService courseService;
 
-    @PreAuthorize("hasRole('ROLE_teacher')")
+    @PreAuthorize("hasRole('ROLE_TEACHER')")
     @PostMapping("/publish")
     public RestBean<String> publishCourse(@RequestBody CoursePublishDTO dto) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        System.out.println("用户权限: " + auth.getAuthorities());
         return controllerHandler.messageHandler(() ->
                 courseService.publishCourse(dto));
     }
 
-    @PreAuthorize("hasRole('ROLE_teacher')")
+    @PreAuthorize("hasRole('ROLE_TEACHER')")
     @DeleteMapping("/id")
     public RestBean<String> deleteCourse(@RequestParam("id") Integer id) {
         return controllerHandler.messageHandler(() ->
                 courseService.deleteCourseById(id));
     }
 
-    @PreAuthorize("hasRole('ROLE_teacher')")
+    @PreAuthorize("hasRole('ROLE_TEACHER')")
     @PostMapping("/update/{id}")
     public RestBean<String> updateCourse(@RequestBody CoursePublishDTO dto, @PathVariable Long id) {
         return controllerHandler.messageHandler(() ->
@@ -55,8 +59,9 @@ public class CourseController {
     }
 
     @GetMapping("/collect/{id}")
-    public RestBean<CourseVO> collectCourse(@PathVariable Long id) {
-        return courseService.collectCourse(id);
+    public RestBean<String> collectCourse(@PathVariable Long id) {
+        return controllerHandler.messageHandler(() ->
+                courseService.collectCourse(id));
     }
 
     @GetMapping("/{id}")

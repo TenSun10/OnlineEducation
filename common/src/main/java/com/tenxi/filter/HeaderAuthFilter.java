@@ -14,9 +14,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.java.Log;
+import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
@@ -25,6 +27,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.DispatcherServlet;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.tenxi.utils.ConstStr.ACCOUNT_LOGIN;
@@ -40,6 +44,11 @@ import static com.tenxi.utils.ConstStr.ACCOUNT_LOGIN;
  * 我们的网关不需要使用Security和这个类，但是网关引入了common
  * 导致就会加载这个类，但是加载又没有Security的依赖导致报错
  * 所以给这个类添加一个Condition
+ */
+
+/**
+ * 新增traceId的获取
+ * 用于日志中添加上下文信息
  */
 @Log
 @ConditionalOnClass(DispatcherServlet.class)
@@ -65,6 +74,10 @@ public class HeaderAuthFilter extends OncePerRequestFilter {
 
         String userId = request.getHeader("X-User-Id");
         String signature = request.getHeader("X-Signature");
+        // 从请求头中获取 traceId
+        String traceId = getTraceIdFromRequest(request);
+
+
         if (! StringUtils.hasText(userId) || !StringUtils.hasText(signature)) {
             log.info("缺少身份验证头信息");
             throw new PassAuthException("缺少身份验证头信息");
@@ -74,6 +87,11 @@ public class HeaderAuthFilter extends OncePerRequestFilter {
             log.info("签名验证失败");
             throw new PassAuthException("签名验证失败");
         }
+
+        if (traceId == null) {
+            // 如果 traceId 不存在，则生成一个新的
+            traceId = UUID.randomUUID().toString().replaceAll("-", "");
+        }
         String redisKey = ACCOUNT_LOGIN + userId;
         String userJson = stringRedisTemplate.opsForValue().get(redisKey);
 
@@ -82,6 +100,8 @@ public class HeaderAuthFilter extends OncePerRequestFilter {
             throw new JwtException("Validation Out of Date");
         }
 
+        // 将traceId放入MDC
+        MDC.put("traceId", traceId);
 
         //登陆成功就把id存储在ThreadLocal里面
         BaseContext.setCurrentId(Long.parseLong(userId));
@@ -91,9 +111,15 @@ public class HeaderAuthFilter extends OncePerRequestFilter {
 
         Account account = new ObjectMapper().readValue(userJson, Account.class);
         UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
-                new LoginUser(account), null, null);
+                new LoginUser(account), null, List.of(new SimpleGrantedAuthority(account.getRole())));
         SecurityContextHolder.getContext().setAuthentication(authenticationToken);
-        filterChain.doFilter(request, response);
+        log.info(SecurityContextHolder.getContext().getAuthentication().toString());
+
+        try {
+            filterChain.doFilter(request, response);
+        }finally {
+            MDC.clear();
+        }
 
     }
     public boolean checkPath(String uri) {
@@ -105,5 +131,9 @@ public class HeaderAuthFilter extends OncePerRequestFilter {
         }
         return false;
 
+    }
+
+    private String getTraceIdFromRequest(HttpServletRequest request) {
+        return request.getHeader("X-Trace-Id");
     }
 }

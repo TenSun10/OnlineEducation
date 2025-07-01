@@ -6,6 +6,8 @@ import com.tenxi.order.entity.vo.OrderVO;
 import com.tenxi.order.service.OrderService;
 import com.tenxi.utils.RestBean;
 import jakarta.annotation.Resource;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -36,10 +38,22 @@ public class OrderController {
         return orderService.getOrderById(id);
     }
 
+    @GetMapping("/status/{id}")
+    public RestBean<String> changeOrderStatus(@PathVariable Long id) {
+        return controllerHandler.messageHandler(() ->
+                orderService.changeOrderStatus(id));
+    }
+
     //删除订单
     @DeleteMapping("/{id}")
     public RestBean<String> deleteOrder(@PathVariable Long id) {
         return controllerHandler.messageHandler(() ->
                 orderService.deleteOrderById(id));
+    }
+
+    //根据课程的id获取到所有订阅了该课程的用户的id
+    @GetMapping("/subscribe/{id}")
+    List<Long> subscribe(@PathVariable("id") Long id) {
+        return orderService.subscribe(id);
     }
 }

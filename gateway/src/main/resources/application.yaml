@@ -26,6 +26,10 @@ spring:
           uri: lb://OE-pay-service
           predicates:
             - Path=/pay/**
+        - id: OE-notification-service
+          uri: lb://OE-notification-service
+          predicates:
+            - Path=/notify/**
 logging:
   level:
     org.springframework.cloud.gateway: DEBUG

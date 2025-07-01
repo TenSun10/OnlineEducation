@@ -17,6 +17,7 @@ public class Account {
     private String password;
     private String avatar;
     private String role;
+
     @JsonIgnore
     private LocalDateTime registerTime;
 

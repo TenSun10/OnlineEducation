@@ -16,7 +16,7 @@ public interface CourseService extends IService<Course> {
 
     RestBean<List<CourseVO>> getByTag(Long id);
 
-    RestBean<CourseVO> collectCourse(Long id);
+    String collectCourse(Long id);
 
     RestBean<CourseVO> getCourseById(Long id);
 

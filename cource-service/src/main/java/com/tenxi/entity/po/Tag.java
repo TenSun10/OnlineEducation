@@ -1,7 +1,6 @@
 package com.tenxi.entity.po;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,10 +15,12 @@ import java.time.LocalDateTime;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@TableName("tag")
 public class Tag {
     @TableId(type= IdType.ASSIGN_ID)
     private Long id;
     private String name;
+    @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
     public Tag(String tagName, LocalDateTime now) {

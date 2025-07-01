@@ -11,4 +11,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface OrderClient {
     @GetMapping("/{id}")
     RestBean<OrderVO> getOrder(@PathVariable Long id);
+    @GetMapping("/status/{id}")
+    RestBean<String> changeOrderStatus(@PathVariable Long id);
 }

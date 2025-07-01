@@ -27,7 +27,7 @@ public class CategoryController {
      * @return
      */
     @PostMapping
-    @PreAuthorize("hasRole('ROLE_admin')")
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
     public RestBean<String> addCategory(@RequestBody CategoryAddDTO dto) {
         return controllerHandler.messageHandler(() ->
                 categoryService.addCategory(dto));

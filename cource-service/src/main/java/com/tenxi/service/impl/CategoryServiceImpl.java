@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.*;
 
-import static com.tenxi.common.CategoryConstStr.CACHE_CATEGORY;
+import static com.tenxi.common.CourseConstStr.CACHE_CATEGORY;
 
 
 @Service

@@ -90,6 +90,10 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
             order.setPayTime(LocalDateTime.now());
             updateById(order);
         }
+        int code = orderClient.changeOrderStatus(orderId).code();
+        if (code != 200) {
+            throw new RuntimeException("修改订单信息失败");
+        }
     }
 
     @Override

@@ -33,6 +33,7 @@ public class MyAuthenticationSuccessHandler implements AuthenticationSuccessHand
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
         LoginUser user = (LoginUser)authentication.getPrincipal();
         Account account = user.getAccount();
+        account.setRole("ROLE_" + account.getRole());
 
         log.info(account.getEmail() + "用户登录成功");
 

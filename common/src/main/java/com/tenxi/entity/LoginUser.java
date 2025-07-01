@@ -20,7 +20,9 @@ public class LoginUser implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + account.getRole()));
+        String role = account.getRole().toUpperCase();
+        System.out.println("生成的权限: ROLE_" + role); // 调试日志
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role));
     }
 
     @Override
