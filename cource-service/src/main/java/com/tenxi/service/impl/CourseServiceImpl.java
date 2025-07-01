@@ -245,7 +245,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         Long userId = BaseContext.getCurrentId();
         LambdaQueryWrapper<Course> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Course::getPusherId, userId);
-        queryWrapper.ne(Course::getId, id);
+        queryWrapper.eq(Course::getId, id);
         boolean remove = remove(queryWrapper);
         if (remove) {
             return null;
@@ -360,6 +360,9 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
     }
 
 
+    /**
+     * 定时任务 处理redis中课程收藏情况 存入或者删除相应的数据库数据
+     */
     @Scheduled(fixedDelay = 60000)
     public void synCollectOperation() {
         Set<String> keys = redisTemplate.keys(CACHE_COURSE_COLLECT_HASH);

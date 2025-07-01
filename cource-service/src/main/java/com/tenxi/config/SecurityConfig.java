@@ -50,7 +50,7 @@ public class SecurityConfig {
                         rememberMe.userDetailsService(loginService))
                 .addFilterBefore(headerAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .csrf(AbstractHttpConfigurer::disable)
-                //注意:spring security的异常处理优先级高于业务逻辑异常处理
+                //注意:spring security的异常处理优先级高于业务逻辑异常处理 - 指的是安全过滤器链中的异常处理机制会在请求进入Controller层之前拦截认证/授权异常
                 //所以当出现业务逻辑异常的时候也会报错401或者403
                 //那么我们就需要定义自己的全局异常处理器
                 .exceptionHandling(handler -> {

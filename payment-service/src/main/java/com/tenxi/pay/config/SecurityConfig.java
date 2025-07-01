@@ -21,7 +21,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
+                .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .formLogin(AbstractHttpConfigurer::disable)
                 .rememberMe(rememberMe -> rememberMe.userDetailsService(loginService))
                 .addFilterBefore(headerAuthFilter, UsernamePasswordAuthenticationFilter.class)
