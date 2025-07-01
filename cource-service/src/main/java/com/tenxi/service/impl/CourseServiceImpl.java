@@ -72,8 +72,6 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
         Course course = new Course();
         BeanUtils.copyProperties(dto, course);
         course.setPusherId(pusherId);
-        course.setCreateAt(LocalDateTime.now());
-        course.setUpdateAt(LocalDateTime.now());
         save(course);
 
         //2.处理标签,选择利用消息队列异步处理
