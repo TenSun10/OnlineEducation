@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 public class Account {
 
     private Long id;
+    private String username;
     private String email;
     private String password;
     private String avatar;

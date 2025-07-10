@@ -32,6 +32,7 @@
         <mp.version>3.5.7</mp.version>
         <jwt.version>0.11.5</jwt.version>
         <json.version>2.0.52</json.version>
+        <tomcat.version>10.1.16</tomcat.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -58,6 +59,12 @@
             <groupId>com.tenxi</groupId>
             <artifactId>common</artifactId>
             <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
+        <!-- 添加响应式Web依赖 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
 
         <!--test模块-->
@@ -94,15 +101,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-gateway-server</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.tomcat.embed</groupId>
-            <artifactId>tomcat-embed-core</artifactId>
-            <version>10.1.36</version>
         </dependency>
     </dependencies>
 

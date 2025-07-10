@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
 
 @Log
 @RestController
@@ -51,5 +52,10 @@ public class UserController {
     public RestBean<String> resetPassword(@RequestBody PasswordResetDto dto) {
         return controllerHandler.messageHandler(() ->
                 userService.resetPassword(dto));
+    }
+
+    @PostMapping("/batch")
+    public RestBean<List<AccountDetailVo>> getBatchAccounts(@RequestBody Set<Long> userIds) {
+        return userService.getBatchAccount(userIds);
     }
 }

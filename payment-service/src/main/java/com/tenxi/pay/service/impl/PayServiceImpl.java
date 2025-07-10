@@ -8,12 +8,13 @@ import com.alipay.api.internal.util.AlipaySignature;
 import com.alipay.api.request.AlipayTradePagePayRequest;
 import com.alipay.api.response.AlipayTradePagePayResponse;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.pay.client.OrderClient;
 import com.tenxi.pay.config.AlipayConfig;
 import com.tenxi.pay.entity.dto.PayCreateDTO;
 import com.tenxi.pay.entity.po.OrderDetail;
 import com.tenxi.pay.enums.PayStatus;
-import com.tenxi.pay.exception.BusinessException;
 import com.tenxi.pay.mapper.PayMapper;
 import com.tenxi.pay.service.PayService;
 import com.tenxi.utils.BaseContext;
@@ -56,7 +57,7 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
         try {
             userId = orderClient.getOrder(dto.getOrderId()).data().getUserId();
         } catch (FeignException e) {
-            throw new BusinessException("订单服务不可用");
+            throw new BusinessException(503, "订单服务不可用");
         }
         if(Longs.compare(currentId, userId) != 0){
             return RestBean.failure(403, "错误操作，请联系管理员");
@@ -81,7 +82,7 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
     public void updateOrderStatus(Long orderId, PayStatus status) throws BusinessException {
         OrderDetail order = getById(orderId);
         if (order == null) {
-            throw new BusinessException("订单不存在");
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
         }
 
         // 只有未处理的订单才更新
@@ -164,6 +165,6 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
         if (response.isSuccess()) {
             return response.getBody();
         }
-        throw new BusinessException("支付宝支付链接生成失败: " + response.getMsg());
+        throw new BusinessException(ErrorCode.PAYMENT_FAILED);
     }
 }

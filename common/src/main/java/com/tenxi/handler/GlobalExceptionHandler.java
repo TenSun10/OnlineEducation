@@ -1,6 +1,5 @@
 package com.tenxi.handler;
 
-import com.baomidou.mybatisplus.core.exceptions.MybatisPlusException;
 import com.tenxi.exception.BusinessException;
 import com.tenxi.utils.RestBean;
 import feign.FeignException;

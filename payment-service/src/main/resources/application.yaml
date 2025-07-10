@@ -60,10 +60,9 @@ oe:
       - "/users/login"
       - "/users/register"
       - "/users/ask-code"
-#支付宝支付相关配置
 alipay:
   app-id: your_app_id
   private-key: your_merchant_private_key
   public-key: alipay_public_key
-  gateway: https://openapi.alipaydev.com/gateway.do  # 沙箱环境
+  gateway: https://openapi.alipaydev.com/gateway.do
   notify-url: http://your-domain.com/pay/callback/alipay

@@ -3,6 +3,7 @@ package com.tenxi.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.tenxi.entity.dto.PasswordResetDto;
+import com.tenxi.utils.BaseContext;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.Account;
 import com.tenxi.entity.vo.AccountDetailVo;
@@ -32,6 +33,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private PasswordEncoder passwordEncoder;
+    @Resource
+    private UserMapper userMapper;
 
     /**
      * 获取验证码
@@ -116,13 +119,36 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
     }
 
     /**
-     * TODO 重新设置密码
+     * 重新设置密码
      * @param dto
      * @return
      */
     @Override
     public String resetPassword(PasswordResetDto dto) {
-        return "";
+        String code = getRedisCode(dto.getEmail());
+        if(!StringUtils.hasText(code)) {
+            return "请先获取验证码";
+        }
+        if(!code.equals(dto.getCode())) {
+            return "请输入正确的验证码";
+        }
+        Long userId = BaseContext.getCurrentId();
+
+        int result = userMapper.setNewPassword(userId, dto.getEmail(), dto.getNewPassword());
+
+        if (result != 1) {return "未知错误，请联系管理员";}
+        return null;
+    }
+
+    /**
+     * 用于Feign之间调用的批量查询操作
+     * 不需要管理员权限
+     * @param userIds
+     * @return
+     */
+    @Override
+    public RestBean<List<AccountDetailVo>> getBatchAccount(Set<Long> userIds) {
+        return batchUsers(new ArrayList<>(userIds));
     }
 
 
