@@ -14,6 +14,7 @@ import com.tenxi.pay.client.OrderClient;
 import com.tenxi.pay.config.AlipayConfig;
 import com.tenxi.pay.entity.dto.PayCreateDTO;
 import com.tenxi.pay.entity.po.OrderDetail;
+import com.tenxi.pay.entity.vo.OrderVO;
 import com.tenxi.pay.enums.PayStatus;
 import com.tenxi.pay.mapper.PayMapper;
 import com.tenxi.pay.service.PayService;
@@ -54,14 +55,20 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
         //判断创建这个支付的用户与订单的创建id是否一致
         Long currentId = BaseContext.getCurrentId();
         Long userId;
+        OrderVO orderVO;
         try {
-            userId = orderClient.getOrder(dto.getOrderId()).data().getUserId();
+            orderVO = orderClient.getOrder(dto.getOrderId()).data();
+            userId = orderVO.getUserId();
         } catch (FeignException e) {
             throw new BusinessException(503, "订单服务不可用");
         }
         if(Longs.compare(currentId, userId) != 0){
             return RestBean.failure(403, "错误操作，请联系管理员");
         }
+        if (orderVO.getExpireTime().isBefore(LocalDateTime.now())) {
+            return RestBean.failure(405, "订单已超时");
+        }
+
 
         OrderDetail orderDetail = new OrderDetail();
         BeanUtils.copyProperties(dto, orderDetail);

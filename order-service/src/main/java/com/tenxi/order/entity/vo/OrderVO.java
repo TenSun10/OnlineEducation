@@ -4,6 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -13,6 +15,7 @@ public class OrderVO {
     private Long courseId;
     private String courseName;
     private String courseDes;
+    private LocalDateTime expireTime;
     private Integer status;
     //显示创建订单时的价格
     private float totalFee;
