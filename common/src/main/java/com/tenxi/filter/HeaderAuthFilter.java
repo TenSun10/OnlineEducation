@@ -1,6 +1,7 @@
 package com.tenxi.filter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tenxi.enums.ErrorCode;
 import com.tenxi.utils.BaseContext;
 import com.tenxi.config.AuthProperties;
 import com.tenxi.entity.Account;
@@ -80,12 +81,12 @@ public class HeaderAuthFilter extends OncePerRequestFilter {
 
         if (! StringUtils.hasText(userId) || !StringUtils.hasText(signature)) {
             log.info("缺少身份验证头信息");
-            throw new PassAuthException("缺少身份验证头信息");
+            throw new PassAuthException(ErrorCode.JWT_NOT_FOUND);
         }
 
         if(! HmacSigner.verify(userId, signature)) {
             log.info("签名验证失败");
-            throw new PassAuthException("签名验证失败");
+            throw new PassAuthException(ErrorCode.JWT_INVALID_FAILED);
         }
 
         if (traceId == null) {
@@ -97,7 +98,7 @@ public class HeaderAuthFilter extends OncePerRequestFilter {
 
         if(!StringUtils.hasText(userJson)) {
             log.info("当前用户的登录信息过期");
-            throw new JwtException("Validation Out of Date");
+            throw new JwtException(ErrorCode.JWT_OUT_OF_DATE);
         }
 
         // 将traceId放入MDC

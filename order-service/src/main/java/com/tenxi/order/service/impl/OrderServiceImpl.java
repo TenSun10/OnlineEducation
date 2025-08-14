@@ -2,6 +2,8 @@ package com.tenxi.order.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.order.client.CourseClient;
 import com.tenxi.order.entity.dto.OrderCreateDto;
 import com.tenxi.order.entity.po.Order;
@@ -87,7 +89,9 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
 
         Order item = getOne(queryWrapper);
 
-        if(item == null) {return RestBean.failure(500, "查询失败，请联系管理员");}
+        if(item == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
 
         OrderVO orderVO = transOrderToVO(item);
 
@@ -100,13 +104,13 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
      * @return
      */
     @Override
-    public String deleteOrderById(Long id) {
+    public RestBean<String> deleteOrderById(Long id) {
         Long currentId = BaseContext.getCurrentId();
         LambdaQueryWrapper<Order> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Order::getId, id).eq(Order::getUserId, currentId);
         boolean remove = remove(queryWrapper);
-        if(remove) return null;
-        return "取消订单失败";
+        if(remove) return RestBean.successWithMsg("订单删除成功");
+        throw new BusinessException(ErrorCode.ORDER_DEL_FAILED);
     }
 
 
@@ -131,14 +135,17 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     }
 
     @Override
-    public String changeOrderStatus(Long id) {
+    public RestBean<String> changeOrderStatus(Long id) {
         LambdaQueryWrapper<Order> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Order::getId, id);
         Order one = getOne(queryWrapper);
-        if(one == null) return "订单号错误,请联系管理员";
+        if(one == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
         one.setStatus(1);
-        updateById(one);
-        return null;
+        if(updateById(one)) return RestBean.successWithMsg("修改订单状态成功");
+
+        throw new BusinessException(ErrorCode.ORDER_STATUS_UPDATE_FAILED);
     }
 
     /**

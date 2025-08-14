@@ -15,9 +15,9 @@ public interface OrderService extends IService<Order> {
 
     RestBean<OrderVO> getOrderById(Long id);
 
-    String deleteOrderById(Long id);
+    RestBean<String> deleteOrderById(Long id);
 
     List<Long> subscribe(Long id);
 
-    String changeOrderStatus(Long id);
+    RestBean<String> changeOrderStatus(Long id);
 }

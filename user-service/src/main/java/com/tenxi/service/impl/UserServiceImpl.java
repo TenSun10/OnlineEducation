@@ -3,6 +3,8 @@ package com.tenxi.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.tenxi.entity.dto.PasswordResetDto;
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.utils.BaseContext;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.Account;
@@ -43,7 +45,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
      * @return
      */
     @Override
-    public String askCode(String email, String type) {
+    public RestBean<String> askCode(String email, String type) {
         synchronized (email.intern()) {
             //生成验证码
             Random random = new Random();
@@ -57,7 +59,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
             data.put("code", String.valueOf(code));
             mailListener.sendMail(data);
 
-            return null;
+            return RestBean.successWithMsg("验证码获取成功");
         }
     }
 
@@ -67,22 +69,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
      * @return
      */
     @Override
-    public String regitser(EmailRegisterDto vo) {
+    public RestBean<String> register(EmailRegisterDto vo) {
         //先获取用户传递的code和redis中存储的code是否一致
         String voCode = vo.getCode();
         if(!StringUtils.hasText(voCode)) {
-            return "验证码为空,请先获取验证码";
+            throw new BusinessException(ErrorCode.CODE_IS_NULL);
         }
         String redisCode = getRedisCode(vo.getEmail());
         if(!voCode.equals(redisCode)) {
-            return "验证码错误,请重新输入";
+            throw new BusinessException(ErrorCode.CODE_VALID_FAILED);
         }
 
         LambdaQueryWrapper<Account> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Account::getEmail, vo.getEmail());
         Account accountTest = getOne(queryWrapper);
         if(accountTest != null) {
-            return "当前用户已存在,请勿重复注册";
+            throw new BusinessException(ErrorCode.USER_RESET_ERROR);
         }
 
         Account account = new Account(vo.getEmail(), passwordEncoder.encode(vo.getPassword()), vo.getRole(), LocalDateTime.now());
@@ -100,7 +102,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
     public RestBean<AccountDetailVo> getAccount(Long id) {
         Account account = getById(id);
         if(account == null) {
-            return RestBean.successWithMsg("为查询到该用户的信息");
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
         AccountDetailVo vo = new AccountDetailVo(account.getId(), account.getEmail(), account.getAvatar(), account.getRegisterTime());
         return RestBean.successWithData(vo);
@@ -124,20 +126,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
      * @return
      */
     @Override
-    public String resetPassword(PasswordResetDto dto) {
+    public RestBean<String> resetPassword(PasswordResetDto dto) {
         String code = getRedisCode(dto.getEmail());
         if(!StringUtils.hasText(code)) {
-            return "请先获取验证码";
+            throw new BusinessException(ErrorCode.CODE_IS_NULL);
         }
         if(!code.equals(dto.getCode())) {
-            return "请输入正确的验证码";
+            throw new BusinessException(ErrorCode.CODE_VALID_FAILED);
         }
         Long userId = BaseContext.getCurrentId();
 
         int result = userMapper.setNewPassword(userId, dto.getEmail(), dto.getNewPassword());
 
-        if (result != 1) {return "未知错误，请联系管理员";}
-        return null;
+        if (result != 1) {
+            throw new BusinessException(ErrorCode.SERVER_INNER_ERROR);
+        }
+        return RestBean.successWithMsg("重新设置密码成功");
     }
 
     /**

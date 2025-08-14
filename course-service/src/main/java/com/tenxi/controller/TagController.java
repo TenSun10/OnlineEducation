@@ -28,7 +28,7 @@ public class TagController {
             description = "用户点击的标签查找相关的课程"
     )
     @GetMapping("/{id}")
-    public RestBean<List<CourseVO>> getCoursesByTag(@PathVariable Long id) {
+    public RestBean<List<CourseVO>> getCoursesByTagId(@PathVariable Long id) {
         return courseService.getByTag(id);
     }
 }

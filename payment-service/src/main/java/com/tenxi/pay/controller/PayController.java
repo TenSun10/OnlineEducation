@@ -32,9 +32,8 @@ public class PayController {
             summary = "订单支付操作",
             description = "用户对创建的订单进行支付，返回给前端支付链接",
             responses = {
-                    @ApiResponse(responseCode = "503", description = "订单服务不可用"),
-                    @ApiResponse(responseCode = "403", description = "未知错误请联系管理员"),
-                    @ApiResponse(responseCode = "405", description = "订单已超时，需要重新创建")
+                    @ApiResponse(responseCode = "500", description = "服务器内部未知错误"),
+                    @ApiResponse(responseCode = "2101", description = "订单已超时，需要重新创建"),
             }
     )
     @PostMapping("/create")

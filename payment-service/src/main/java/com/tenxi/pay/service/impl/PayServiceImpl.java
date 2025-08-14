@@ -20,20 +20,17 @@ import com.tenxi.pay.mapper.PayMapper;
 import com.tenxi.pay.service.PayService;
 import com.tenxi.utils.BaseContext;
 import com.tenxi.utils.RestBean;
-import feign.FeignException;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.extern.java.Log;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
+import org.springframework.amqp.core.MessageDeliveryMode;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static com.tenxi.pay.enums.PayStatus.PENDING;
@@ -47,6 +44,8 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
     private AlipayClient alipayClient;
     @Resource
     private AlipayConfig alipayConfig;
+    @Resource
+    private RabbitTemplate rabbitTemplate;
 
 
     @Override
@@ -56,54 +55,25 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
         Long currentId = BaseContext.getCurrentId();
         Long userId;
         OrderVO orderVO;
-        try {
-            orderVO = orderClient.getOrder(dto.getOrderId()).data();
-            userId = orderVO.getUserId();
-        } catch (FeignException e) {
-            throw new BusinessException(503, "订单服务不可用");
-        }
+        orderVO = orderClient.getOrder(dto.getOrderId()).data();
+        userId = orderVO.getUserId();
         if(Longs.compare(currentId, userId) != 0){
-            return RestBean.failure(403, "错误操作，请联系管理员");
+            throw new BusinessException(ErrorCode.SERVER_INNER_ERROR);
         }
         if (orderVO.getExpireTime().isBefore(LocalDateTime.now())) {
-            return RestBean.failure(405, "订单已超时");
+            throw new BusinessException(ErrorCode.ORDER_EXPIRED);
         }
 
 
-        OrderDetail orderDetail = new OrderDetail();
-        BeanUtils.copyProperties(dto, orderDetail);
-        //存入数据库
-        save(orderDetail);
-
-        //生成支付宝支付链接
-        String alipayUrl = createAlipayUrl(orderDetail.getId(), orderDetail.getRealFee());
+        //生成支付宝链接
+        String alipayUrl = createAlipayUrl(orderVO.getId(), orderVO.getTotalFee());
 
         //将支付链接返回
         return RestBean.successWithData(alipayUrl);
+
     }
 
-    /**
-     * 修改订单状态
-     */
-    @Transactional
-    public void updateOrderStatus(Long orderId, PayStatus status) throws BusinessException {
-        OrderDetail order = getById(orderId);
-        if (order == null) {
-            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
-        }
-
-        // 只有未处理的订单才更新
-        if (order.getPayStatus() == PENDING.getValue()) {
-            order.setPayStatus(status.getValue());
-            order.setPayTime(LocalDateTime.now());
-            updateById(order);
-        }
-        int code = orderClient.changeOrderStatus(orderId).code();
-        if (code != 200) {
-            throw new RuntimeException("修改订单信息失败");
-        }
-    }
-
+    
     @Override
     public String handlerAlipayCallback(HttpServletRequest request) {
         log.info("支付宝回调参数: {}", request.getParameterMap());
@@ -128,13 +98,66 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
             String outTradeNo = params.get("out_trade_no");
 
             if ("TRADE_SUCCESS".equals(tradeStatus)) {
-                // 更新订单状态为成功
-                updateOrderStatus(Long.parseLong(outTradeNo), PayStatus.SUCCESS);
+                Long orderId = Long.parseLong(outTradeNo);
+                // 1. 更新订单状态为成功
+                updateOrderStatus(orderId, PayStatus.SUCCESS);
+
+                // 2. 发送消息到MQ（异步处理耗时操作）
+                sendPaySuccessMessage(orderId, params);
             }
             return "success"; // 告诉支付宝已正确处理
         } catch (AlipayApiException | BusinessException e) {
             return "failure";
         }
+    }
+
+    private void sendPaySuccessMessage(Long orderId, Map<String, String> params) {
+        try {
+            // 构造消息体
+            Map<String, Object> message = new HashMap<>();
+            message.put("orderId", orderId);
+            message.put("totalAmount", params.get("total_amount"));
+            message.put("timestamp", System.currentTimeMillis());
+
+            // 发送可靠消息（持久化+确认机制）
+            rabbitTemplate.convertAndSend(
+                    "online.direct",
+                    "online-education-pay",
+                    message,
+                    m -> {
+                        // 消息持久化
+                        m.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+                        // 设置TTL（防止消息积压）
+                        m.getMessageProperties().setExpiration("600000"); // 10分钟
+                        return m;
+                    }
+            );
+            log.info("支付成功消息已发送: orderId={}", orderId);
+        } catch (Exception e) {
+            log.error("发送MQ消息失败", e);
+            // 失败重试或记录日志
+        }
+    }
+
+
+    /**
+     * 修改订单状态
+     */
+    @Transactional
+    public void updateOrderStatus(Long orderId, PayStatus status) throws BusinessException {
+        OrderVO orderVO = orderClient.getOrder(orderId).data();
+        if (orderVO == null) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
+        }
+
+        // 只有未处理的订单才更新
+        if (orderVO.getStatus() == PENDING.getValue()) {
+            int code = orderClient.changeOrderStatus(orderId).code();
+            if (code != 200) {
+                throw new BusinessException(ErrorCode.ORDER_STATUS_UPDATE_FAILED);
+            }
+        }
+
     }
 
 

@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tenxi.entity.RedisData;
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.dto.CategoryAddDTO;
 import com.tenxi.entity.po.Category;
@@ -44,19 +46,19 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
     @Override
-    public String addCategory(CategoryAddDTO dto) {
+    public RestBean<String> addCategory(CategoryAddDTO dto) {
         Category category = new Category(dto.getLabel(), dto.getParentId(), dto.getLevel(), dto.getOrderNum(), dto.getStatus(), LocalDateTime.now());
         Category entity = lambdaQuery().eq(Category::getLabel, category.getLabel()).one();
         if (Objects.nonNull(entity)) {
-            return "该分类已存在";
+            throw new BusinessException(ErrorCode.CATEGORY_ALREADY_EXISTS);
         }
 
-        boolean save = save(category);
-        //出现更改则清除redis缓存
-        if(save){
-            redisTemplate.delete(CACHE_CATEGORY);
-            return null;
-        }else return "上传失败, 请重试";
+        if (!save(category)) {
+            throw new BusinessException(ErrorCode.CATEGORY_SAVE_FAILED);
+        }
+
+        redisTemplate.delete(CACHE_CATEGORY);
+        return RestBean.successWithMsg("添加分类成功");
     }
 
 
@@ -107,19 +109,20 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
      * @return
      */
     @Override
-    public String changeStatus(Long id) {
+    public RestBean<String> changeStatus(Long id) {
 
         Category byId = getById(id);
         if (byId.getStatus() == 0) byId.setStatus(1);
         else byId.setStatus(0);
 
-        boolean update = updateById(byId);
-
-        //出现更改则清除redis缓存
-        if(update) {
+        if(updateById(byId)) {
             redisTemplate.delete(CACHE_CATEGORY);
-            return null;
-        }else return "修改失败, 请重试";
+            return RestBean.successWithMsg("修改分类状态成功");
+        }else {
+            throw new BusinessException(ErrorCode.CATEGORY_STATUS_UPDATE_FAILED);
+        }
+
+
     }
 
     private CategoryTreeVO convertToTree(Category root, List<Category> all) {

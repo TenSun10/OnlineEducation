@@ -11,15 +11,15 @@ import java.util.List;
 import java.util.Set;
 
 public interface UserService extends IService<Account> {
-    String askCode(String email, String type);
+    RestBean<String> askCode(String email, String type);
 
-    String regitser(EmailRegisterDto emailRegisterDto);
+    RestBean<String> register(EmailRegisterDto emailRegisterDto);
 
     RestBean<AccountDetailVo> getAccount(Long id);
 
     RestBean<List<AccountDetailVo>> batchUsers(List<Long> userIds);
 
-    String resetPassword(PasswordResetDto dto);
+    RestBean<String> resetPassword(PasswordResetDto dto);
 
     RestBean<List<AccountDetailVo>> getBatchAccount(Set<Long> userIds);
 }

@@ -6,6 +6,7 @@ import com.tenxi.handler.ControllerHandler;
 import com.tenxi.service.CommentService;
 import com.tenxi.utils.RestBean;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,7 +27,11 @@ public class CommentController {
      */
     @Operation(
             summary = "用户发布评论",
-            description = "用户作为楼主或者回复发布评论"
+            description = "用户作为楼主或者回复发布评论",
+            responses = {
+                    @ApiResponse(responseCode = "2001", description = "未找到需要评论的课程"),
+                    @ApiResponse(responseCode = "2403", description = "评论发布失败")
+            }
     )
     @PostMapping("/publish")
     public RestBean<Long> publishComment(@RequestBody CommentAddDTO commentAddDTO) {
@@ -36,12 +41,15 @@ public class CommentController {
 
     @Operation(
             summary = "用户删除评论",
-            description = "发布评论的或者课程发布者删除评论"
+            description = "发布评论的或者课程发布者删除评论",
+            responses = {
+                    @ApiResponse(responseCode = "2401", description = "未找到相关评论"),
+                    @ApiResponse(responseCode = "2402", description = "无权限操作该评论")
+            }
     )
     @DeleteMapping("/delete/{id}")
     public RestBean<String> deleteComment(@PathVariable("id") Long id) {
-        return controllerHandler.messageHandler(() ->
-                commentService.deleteCommentById(id));
+        return commentService.deleteCommentById(id);
     }
 
     /**
@@ -51,7 +59,10 @@ public class CommentController {
      */
     @Operation(
             summary = "根据评论id判断当前用户是否对该评论操作权限",
-            description = "便于前端提前判断用户是否有操作权限"
+            description = "便于前端提前判断用户是否有操作权限",
+            responses = {
+                    @ApiResponse(responseCode = "2401", description = "未找到相关评论"),
+            }
     )
     @GetMapping("/judge/{id}")
     public RestBean<Boolean> judge(@PathVariable("id") Long id) {

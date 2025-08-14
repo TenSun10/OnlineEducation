@@ -2,6 +2,8 @@ package com.tenxi.notification.listener;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.notification.client.AccountClient;
 import com.tenxi.notification.client.CourseClient;
 import com.tenxi.notification.entity.po.Notification;
@@ -79,16 +81,15 @@ public class NotifyListener {
         queryWrapper.eq(NotificationType::getType, COURSE_UPDATE_TYPE);
         NotificationType type = notificationTypeService.getOne(queryWrapper);
         if (type == null) {
-            log.warning("未知错误：回复通知类型未配置");
-            return;
+            log.warning("未找到匹配的通知类型");
+            throw new BusinessException(ErrorCode.NOTIFY_TYPE_NOT_FOUND);
         }
 
         //2. 获取到课程的相关信息
         Long courseId = (Long) event.get("course_id");
         CourseSimpleVO course = courseClient.getCourse(courseId);
         if (course == null) {
-            log.warning("课程不存在:" + courseId);
-            return;
+            throw new BusinessException(ErrorCode.COURSE_NOT_FOUND);
         }
 
         //3. 获取到订阅了该课程的用户信息，向其发送通知
@@ -110,8 +111,8 @@ public class NotifyListener {
         queryWrapper.eq(NotificationType::getType, REPLY_TYPE);
         NotificationType type = notificationTypeService.getOne(queryWrapper);
         if (type == null) {
-            log.warning("未知错误：回复通知类型未配置");
-            return;
+            log.warning("未找到匹配的通知类型");
+            throw new BusinessException(ErrorCode.NOTIFY_TYPE_NOT_FOUND);
         }
 
         //2.1 从event中获取需要的信息
@@ -128,7 +129,7 @@ public class NotifyListener {
         //3. 生成通知的内容
         if (replier == null) {
             log.warning("无法获取回复者或课程信息");
-            return;
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
         String content = String.format(type.getTemplate(),replier.getUsername() , course.getTitle());
@@ -145,8 +146,8 @@ public class NotifyListener {
         queryWrapper.eq(NotificationType::getType, COMMENT_TYPE);
         NotificationType type = notificationTypeService.getOne(queryWrapper);
         if (type == null) {
-            log.warning("未知错误");
-            return;
+            log.warning("未找到匹配的通知类型");
+            throw new BusinessException(ErrorCode.NOTIFY_TYPE_NOT_FOUND);
         }
 
         //2. 获取event的信息生成相应的通知内容

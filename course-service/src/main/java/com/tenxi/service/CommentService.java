@@ -12,7 +12,7 @@ import java.util.List;
 public interface CommentService extends IService<Comment> {
     RestBean<Long> publishComment(CommentAddDTO commentAddDTO);
 
-    String deleteCommentById(Long id);
+    RestBean<String> deleteCommentById(Long id);
 
     RestBean<Boolean> judgeComment(Long id);
 

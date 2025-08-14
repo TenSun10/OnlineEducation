@@ -7,6 +7,7 @@ import com.tenxi.order.service.OrderService;
 import com.tenxi.utils.RestBean;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.annotation.Resource;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,8 +20,6 @@ import java.util.List;
 public class OrderController {
     @Resource
     private OrderService orderService;
-    @Resource
-    private ControllerHandler controllerHandler;
 
     //创建订单
     @Operation(
@@ -45,7 +44,10 @@ public class OrderController {
     //查询特定订单
     @Operation(
             summary = "用户查询特定的订单",
-            description = "用户根据传入的订单id和自己的id查询订单的详情信息"
+            description = "用户根据传入的订单id和自己的id查询订单的详情信息",
+            responses = {
+                    @ApiResponse(responseCode = "2102", description = "订单不存在")
+            }
     )
     @GetMapping("/{id}")
     public RestBean<OrderVO> getOrder(@PathVariable Long id) {
@@ -55,12 +57,15 @@ public class OrderController {
 
     @Operation(
             summary = "用户查询订单状态",
-            description = "根据传入的订单id和自己的id查询订单的支付状态"
+            description = "根据传入的订单id和自己的id查询订单的支付状态",
+            responses = {
+                    @ApiResponse(responseCode = "2102", description = "订单不存在"),
+                    @ApiResponse(responseCode = "2103", description = "订单状态修改失败")
+            }
     )
     @GetMapping("/status/{id}")
     public RestBean<String> changeOrderStatus(@PathVariable Long id) {
-        return controllerHandler.messageHandler(() ->
-                orderService.changeOrderStatus(id));
+        return orderService.changeOrderStatus(id);
     }
 
 
@@ -71,8 +76,7 @@ public class OrderController {
     )
     @DeleteMapping("/{id}")
     public RestBean<String> deleteOrder(@PathVariable Long id) {
-        return controllerHandler.messageHandler(() ->
-                orderService.deleteOrderById(id));
+        return orderService.deleteOrderById(id);
     }
 
     //根据课程的id获取到所有订阅了该课程的用户的id

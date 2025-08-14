@@ -11,9 +11,9 @@ import java.util.List;
 
 public interface CategoryService extends IService<Category> {
 
-    String addCategory(CategoryAddDTO dto);
+    RestBean<String> addCategory(CategoryAddDTO dto);
 
     RestBean<List<CategoryTreeVO>> buildCategoryTree();
 
-    String changeStatus(Long id);
+    RestBean<String> changeStatus(Long id);
 }

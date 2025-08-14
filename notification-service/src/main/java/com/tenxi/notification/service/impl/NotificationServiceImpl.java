@@ -2,6 +2,8 @@ package com.tenxi.notification.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.notification.client.AccountClient;
 import com.tenxi.notification.entity.po.Notification;
 import com.tenxi.notification.entity.vo.NotificationVO;
@@ -25,23 +27,27 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
 
 
     @Override
-    public String markAsRead(Long id) {
+    public RestBean<String> markAsRead(Long id) {
         //1. 判断需要修改的状态的通知是否存在以及接收者是否正确
         Long receiveId = BaseContext.getCurrentId();
         LambdaQueryWrapper<Notification> queryWrapper = new LambdaQueryWrapper<Notification>();
         queryWrapper.eq(Notification::getId, id);
         Notification notification = getOne(queryWrapper);
 
-        if (notification == null || !notification.getReceiverId().equals(receiveId)) {
-            log.warning("未知通知或接收者错误");
-            return "未知通知或接收者错误";
+        if (notification == null) {
+            log.warning("未知通知");
+            throw new BusinessException(ErrorCode.NOTIFY_NOT_FOUND);
+        }
+        if (!notification.getReceiverId().equals(receiveId)) {
+            log.warning("通知和接收者不匹配");
+            throw new BusinessException(ErrorCode.SERVER_INNER_ERROR);
         }
 
         //2. 正确则修改状态
         notification.setIsRead(1);
         updateById(notification);
 
-        return null;
+        return RestBean.successWithMsg("修改通知状态成功");
     }
 
     /**
@@ -53,7 +59,7 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
     public RestBean<NotificationVO> getNotificationVOById(Long id) {
         Notification notification = getById(id);
         if (notification == null) {
-            return RestBean.failure(404, "通知不存在");
+            throw new BusinessException(ErrorCode.NOTIFY_NOT_FOUND);
         }
         NotificationVO notificationVO = new NotificationVO();
         BeanUtils.copyProperties(notification, notificationVO);

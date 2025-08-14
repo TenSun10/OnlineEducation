@@ -7,6 +7,9 @@ import com.tenxi.entity.dto.CommentAddDTO;
 import com.tenxi.entity.po.Comment;
 import com.tenxi.entity.po.Course;
 import com.tenxi.entity.vo.CommentVO;
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BaseException;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.mapper.CommentMapper;
 import com.tenxi.mapper.CourseMapper;
 import com.tenxi.notification.client.AccountClient;
@@ -47,7 +50,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         courseLambdaQueryWrapper.eq(Course::getId, courseId);
         Course course = courseMapper.selectOne(courseLambdaQueryWrapper);
         if (course == null) {
-            return RestBean.failure(404, "评论发布失败，请联系管理员");
+            throw new BusinessException(ErrorCode.COURSE_NOT_FOUND);
         }
 
         //2. 数据库存储数据
@@ -91,8 +94,10 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             rabbitTemplate.convertAndSend("online.direct", "online-education-notify", comment_event);
 
             return RestBean.successWithData(comment.getId());
+        }else {
+            throw new BusinessException(ErrorCode.COMMENT_PUBLISH_FAILED);
         }
-        return RestBean.failure(500, "评论发布失败，请联系管理员");
+
     }
 
     /**
@@ -101,13 +106,15 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
      * @return
      */
     @Override
-    public String deleteCommentById(Long id) {
+    public RestBean<String> deleteCommentById(Long id) {
         Long userId = BaseContext.getCurrentId();
         LambdaQueryWrapper<Comment> queryWrapper = new LambdaQueryWrapper<Comment>();
         queryWrapper.eq(Comment::getParentId, id);
         Comment comment = getOne(queryWrapper);
 
-        if (comment == null) return "不存在该评论，请重试";
+        if (comment == null) {
+            throw new BusinessException(ErrorCode.COMMENT_NOT_FOUND);
+        }
 
         //1. 判断是否有权限删除评论-课程的发布者和评论的发布者可以删除
         LambdaQueryWrapper<Course> courseQueryWrapper = new LambdaQueryWrapper<>();
@@ -115,7 +122,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         Course course = courseMapper.selectOne(courseQueryWrapper);
 
         if (!Objects.equals(course.getPusherId(), userId) && !Objects.equals(comment.getUserId(), userId)) {
-            return "您没有权限删除该评论";
+            throw new BusinessException(ErrorCode.COMMENT_NOT_AUTH);
         }
 
         boolean remove = removeById(comment.getId());
@@ -123,7 +130,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         if (remove) {
             return null;
         }else {
-            return "服务器内部错误，请联系管理员";
+            throw new BusinessException(ErrorCode.SERVER_INNER_ERROR);
         }
     }
 
@@ -139,10 +146,14 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         LambdaQueryWrapper<Comment> queryWrapper = new LambdaQueryWrapper<Comment>();
         queryWrapper.eq(Comment::getParentId, id);
         Comment comment = getOne(queryWrapper);
+        if (Objects.isNull(comment)) {
+            throw new BusinessException(ErrorCode.COMMENT_NOT_FOUND);
+        }
 
         LambdaQueryWrapper<Course> courseQueryWrapper = new LambdaQueryWrapper<>();
         courseQueryWrapper.eq(Course::getId, comment.getCourseId());
         Course course = courseMapper.selectOne(courseQueryWrapper);
+
 
         if (!Objects.equals(course.getPusherId(), userId) && !Objects.equals(comment.getUserId(), userId)) {
             return RestBean.successWithData(false);

@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.tenxi.client.AccountClient;
 import com.tenxi.entity.po.Collect;
 import com.tenxi.entity.vo.CourseSimpleVO;
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.mapper.CollectMapper;
 import com.tenxi.notification.entity.po.NotificationType;
 import com.tenxi.notification.service.NotificationTypeService;
@@ -68,18 +70,23 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
      * @return
      */
     @Override
-    public String publishCourse(CoursePublishDTO dto) {
+    public RestBean<String> publishCourse(CoursePublishDTO dto) {
         //1.存储视频
         Long pusherId = BaseContext.getCurrentId();
         Course course = new Course();
         BeanUtils.copyProperties(dto, course);
         course.setPusherId(pusherId);
-        save(course);
+        if(save(course)) {
+            //2.处理标签,选择利用消息队列异步处理
+            rabbitTemplate.convertAndSend("online.edu.direct",
+                    "tag_save_op",
+                    course.getId().toString() + "," + dto.getTags());
 
-        //2.处理标签,选择利用消息队列异步处理
-        rabbitTemplate.convertAndSend("online.edu.direct", "tag_save_op", course.getId().toString() + "," + dto.getTags());
+            return RestBean.successWithMsg("发布视频成功");
+        }else {
+            throw new BusinessException(ErrorCode.COURSE_PUBLISH_FAILED);
+        }
 
-        return null;
     }
 
     /**
@@ -217,7 +224,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             List<CourseVO> courseVOS = transVo(List.of(course), userId);
             return RestBean.successWithData(courseVOS.get(0));
         }
-        return RestBean.successWithMsg("该课程不存在");
+        throw new BusinessException(ErrorCode.COURSE_NOT_FOUND);
     }
 
     /**
@@ -233,7 +240,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             BeanUtils.copyProperties(course, vo);
             return vo;
         }
-        return null;
+        throw new BusinessException(ErrorCode.COURSE_NOT_FOUND);
     }
 
     /**
@@ -242,16 +249,16 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
      * @return
      */
     @Override
-    public String deleteCourseById(Integer id) {
+    public RestBean<String> deleteCourseById(Integer id) {
         Long userId = BaseContext.getCurrentId();
         LambdaQueryWrapper<Course> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Course::getPusherId, userId);
         queryWrapper.eq(Course::getId, id);
         boolean remove = remove(queryWrapper);
         if (remove) {
-            return null;
+            return RestBean.successWithMsg("删除课程成功");
         }
-        return "您没有删除本课程的权限";
+        throw new BusinessException(ErrorCode.COURSE_DEL_FAILED);
     }
 
     /**
@@ -260,7 +267,7 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
      * @return
      */
     @Override
-    public String updateCourse(CoursePublishDTO dto, Long id) {
+    public RestBean<String> updateCourse(CoursePublishDTO dto, Long id) {
         // 验证ID不能为空
         if (id == null) {
             throw new IllegalArgumentException("课程ID不能为空");
@@ -292,9 +299,12 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             event.put("course_id", id);
             //使用消息队列异步发送信息
             rabbitTemplate.convertAndSend("online.direct","online-education-notify", event);
+            return RestBean.successWithMsg("课程更新成功");
+        }else {
+            throw new BusinessException(ErrorCode.COURSE_UPDATE_FAILED);
         }
 
-        return updated ? null : "服务器内部错误，课程未发生变更";
+
     }
 
     /**

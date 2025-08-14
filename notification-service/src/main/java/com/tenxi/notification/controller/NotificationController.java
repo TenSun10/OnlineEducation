@@ -8,6 +8,7 @@ import com.tenxi.notification.service.NotificationService;
 import com.tenxi.utils.RestBean;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.annotation.Resource;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -30,9 +31,7 @@ public class NotificationController {
     @PostMapping({"/types"})
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public RestBean<String> createNotificationType(@RequestBody NotificationTypeAddDTO notificationType) {
-        return this.controllerHandler.messageHandler(() ->
-            notificationTypeService.addNotificationType(notificationType)
-        );
+        return notificationTypeService.addNotificationType(notificationType);
     }
 
     /**
@@ -43,13 +42,15 @@ public class NotificationController {
     @Hidden
     @GetMapping("/read/{id}")
     public RestBean<String> markAsRead(@PathVariable Long id) {
-        return controllerHandler.messageHandler(() ->
-                notificationService.markAsRead(id));
+        return notificationService.markAsRead(id);
     }
 
     @Operation(
             summary = "获取通知",
-            description = "通过通知的id获取到通知的详情信息"
+            description = "通过通知的id获取到通知的详情信息",
+            responses = {
+                    @ApiResponse(responseCode = "2502", description = "通知不存在")
+            }
     )
     @GetMapping("/{id}")
     public RestBean<NotificationVO> getNotificationById(@PathVariable Long id) {

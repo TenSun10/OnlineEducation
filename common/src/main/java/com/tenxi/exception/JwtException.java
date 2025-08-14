@@ -1,9 +1,10 @@
 package com.tenxi.exception;
 
-import org.springframework.security.core.AuthenticationException;
+import com.tenxi.enums.ErrorCode;
 
-public class JwtException extends AuthenticationException {
-    public JwtException(String msg) {
-        super(msg);
+
+public class JwtException extends BaseException {
+    public JwtException(ErrorCode errorCode) {
+        super(errorCode);
     }
 }

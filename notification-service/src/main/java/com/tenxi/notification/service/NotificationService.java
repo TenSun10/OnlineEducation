@@ -6,7 +6,7 @@ import com.tenxi.notification.entity.vo.NotificationVO;
 import com.tenxi.utils.RestBean;
 
 public interface NotificationService extends IService<Notification> {
-    String markAsRead(Long id);
+    RestBean<String> markAsRead(Long id);
 
     RestBean<NotificationVO> getNotificationVOById(Long id);
 }

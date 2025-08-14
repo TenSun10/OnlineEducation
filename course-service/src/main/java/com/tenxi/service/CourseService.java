@@ -10,7 +10,7 @@ import com.tenxi.entity.vo.CourseVO;
 import java.util.List;
 
 public interface CourseService extends IService<Course> {
-    String publishCourse(CoursePublishDTO dto);
+    RestBean<String> publishCourse(CoursePublishDTO dto);
 
     RestBean<List<CourseVO>> queryCourse(String des);
 
@@ -22,9 +22,9 @@ public interface CourseService extends IService<Course> {
 
     CourseSimpleVO getSimpleCourseById(Long id);
 
-    String deleteCourseById(Integer id);
+    RestBean<String> deleteCourseById(Integer id);
 
-    String updateCourse(CoursePublishDTO dto, Long id);
+    RestBean<String> updateCourse(CoursePublishDTO dto, Long id);
 
     List<Long> getCourseSubscribers(Long id);
 }

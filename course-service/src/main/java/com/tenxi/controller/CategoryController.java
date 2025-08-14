@@ -33,8 +33,7 @@ public class CategoryController {
     @PostMapping
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public RestBean<String> addCategory(@RequestBody CategoryAddDTO dto) {
-        return controllerHandler.messageHandler(() ->
-                categoryService.addCategory(dto));
+        return categoryService.addCategory(dto);
     }
 
 
@@ -56,7 +55,6 @@ public class CategoryController {
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     @GetMapping("/status/{id}")
     public RestBean<String> changeStatus(@PathVariable Long id) {
-        return controllerHandler.messageHandler(() ->
-                categoryService.changeStatus(id));
+        return categoryService.changeStatus(id);
     }
 }
