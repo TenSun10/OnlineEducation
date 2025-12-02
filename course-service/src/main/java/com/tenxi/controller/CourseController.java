@@ -1,5 +1,6 @@
 package com.tenxi.controller;
 
+import com.tenxi.entity.es.CourseDocument;
 import com.tenxi.entity.vo.CourseSimpleVO;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.dto.CoursePublishDTO;
@@ -26,7 +27,7 @@ import java.util.List;
 @Log
 @RestController
 @RequestMapping("/course")
-public class CourseController {
+public class  CourseController {
     @Resource
     private ControllerHandler controllerHandler;
     @Resource
@@ -42,9 +43,7 @@ public class CourseController {
     )
     @PreAuthorize("hasRole('ROLE_TEACHER')")
     @PostMapping("/publish")
-    public RestBean<String> publishCourse(@RequestBody CoursePublishDTO dto) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        System.out.println("用户权限: " + auth.getAuthorities());
+    public RestBean<String> publishCourse(@ModelAttribute CoursePublishDTO dto) {
         return courseService.publishCourse(dto);
     }
 
@@ -58,7 +57,7 @@ public class CourseController {
     )
     @PreAuthorize("hasRole('ROLE_TEACHER')")
     @DeleteMapping("/id")
-    public RestBean<String> deleteCourse(@RequestParam("id") Integer id) {
+    public RestBean<String> deleteCourse(@RequestParam("id") Long id) {
         return courseService.deleteCourseById(id);
     }
 
@@ -71,7 +70,7 @@ public class CourseController {
     )
     @PreAuthorize("hasRole('ROLE_TEACHER')")
     @PostMapping("/update/{id}")
-    public RestBean<String> updateCourse(@RequestBody CoursePublishDTO dto, @PathVariable Long id) {
+    public RestBean<String> updateCourse(@ModelAttribute CoursePublishDTO dto, @PathVariable("id") Long id) {
         return courseService.updateCourse(dto, id);
     }
 
@@ -81,20 +80,8 @@ public class CourseController {
             description = "根据用户在搜索框中输入或者点击的分类查询相关的课程"
     )
     @GetMapping("/search/{des}")
-    public RestBean<List<CourseVO>> queryCourse(@PathVariable String des) {
+    public RestBean<List<CourseDocument>> queryCourse(@PathVariable("des") String des) {
         return courseService.queryCourse(des);
-    }
-
-
-
-    @Operation(
-            summary = "用户进行课程的收藏",
-            description = "传入课程的id进行用户收藏操作"
-    )
-    @GetMapping("/collect/{id}")
-    public RestBean<String> collectCourse(@PathVariable Long id) {
-        return controllerHandler.messageHandler(() ->
-                courseService.collectCourse(id));
     }
 
 
@@ -103,7 +90,7 @@ public class CourseController {
             summary = "根据id查询课程的详细信息"
     )
     @GetMapping("/{id}")
-    public RestBean<CourseVO> queryCourse(@PathVariable Long id) {
+    public RestBean<CourseVO> queryCourse(@PathVariable("id") Long id) {
         return courseService.getCourseById(id);
     }
 
@@ -111,7 +98,7 @@ public class CourseController {
 
     @Hidden
     @GetMapping("/simple/{id}")
-    public CourseSimpleVO getSimpleCourse(@PathVariable Long id) {
+    public CourseSimpleVO getSimpleCourse(@PathVariable("id") Long id) {
         return courseService.getSimpleCourseById(id);
     }
 
@@ -122,7 +109,7 @@ public class CourseController {
      */
     @Hidden
     @GetMapping("/subscribe/{id}")
-    public List<Long> getCourseSubscribers(@PathVariable Long id) {
+    public List<Long> getCourseSubscribers(@PathVariable("id") Long id) {
         return courseService.getCourseSubscribers(id);
     }
 }

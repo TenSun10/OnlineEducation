@@ -3,29 +3,33 @@ package com.tenxi.service.impl;
 import com.alibaba.nacos.client.naming.utils.CollectionUtils;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.tenxi.client.AccountClient;
 import com.tenxi.entity.dto.CommentAddDTO;
 import com.tenxi.entity.po.Comment;
 import com.tenxi.entity.po.Course;
+import com.tenxi.entity.vo.AccountDetailVo;
 import com.tenxi.entity.vo.CommentVO;
 import com.tenxi.enums.ErrorCode;
-import com.tenxi.exception.BaseException;
 import com.tenxi.exception.BusinessException;
 import com.tenxi.mapper.CommentMapper;
 import com.tenxi.mapper.CourseMapper;
-import com.tenxi.notification.client.AccountClient;
-import com.tenxi.notification.entity.vo.AccountDetailVo;
 import com.tenxi.service.CommentService;
 import com.tenxi.utils.BaseContext;
+import com.tenxi.utils.HmacSigner;
 import com.tenxi.utils.RestBean;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> implements CommentService {
     @Resource
@@ -33,6 +37,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
     @Resource
     private AccountClient accountClient;
+
     @Resource
     private RabbitTemplate rabbitTemplate;
     /**
@@ -70,18 +75,27 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             Map<String , Object> comment_event = new HashMap<>();
             Map<String , Object> replay_event = new HashMap<>();
 
+            //用于异步调用client的身份验证
+            String signature = HmacSigner.sign(pusherId.toString());
+            comment_event.put("X-User-Id", pusherId);
+            comment_event.put("X-Signature", signature);
+
+            replay_event.put("X-User-Id", pusherId);
+            replay_event.put("X-Signature", signature);
+
 
             //判断为回复--另外需要发送回复的通知
             if (commentAddDTO.getParentId() != null){
                 //判断为回复
-                comment_event.put("course_id", courseId);
-                comment_event.put("pusher_id", pusherId);
+                replay_event.put("course_id", courseId);
+                replay_event.put("pusher_id", pusherId);
                 Long parentId = commentAddDTO.getParentId();
-                replay_event.put("parent_id", commentAddDTO.getParentId());
+                replay_event.put("parent_comment_id", commentAddDTO.getParentId());
                 replay_event.put("event_type", "reply");
                 Comment commentParent = getById(parentId);
                 replay_event.put("receiver_id", commentParent.getUserId());
                 replay_event.put("comment_id", comment.getId());
+                log.info("发送回复通知...");
                 rabbitTemplate.convertAndSend("online.direct", "online-education-notify", replay_event);
 
             }
@@ -90,7 +104,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             comment_event.put("pusher_id", pusherId);
             comment_event.put("event_type", "comment");
             comment_event.put("receiver_id", course.getPusherId()); //接受者的id（课程的发布者id）
-            replay_event.put("comment_id", comment.getId());
+            comment_event.put("comment_id", comment.getId());
+            log.info("发送课程评论通知");
             rabbitTemplate.convertAndSend("online.direct", "online-education-notify", comment_event);
 
             return RestBean.successWithData(comment.getId());
@@ -105,11 +120,12 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
      * @param id
      * @return
      */
+    @Transactional(rollbackFor = Exception.class)
     @Override
     public RestBean<String> deleteCommentById(Long id) {
         Long userId = BaseContext.getCurrentId();
-        LambdaQueryWrapper<Comment> queryWrapper = new LambdaQueryWrapper<Comment>();
-        queryWrapper.eq(Comment::getParentId, id);
+        LambdaQueryWrapper<Comment> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Comment::getId, id);
         Comment comment = getOne(queryWrapper);
 
         if (comment == null) {
@@ -125,10 +141,13 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             throw new BusinessException(ErrorCode.COMMENT_NOT_AUTH);
         }
 
-        boolean remove = removeById(comment.getId());
+        List<Long> commentIds = getAllChildrenCommentIds(id);
+        commentIds.add(id);
+
+        boolean remove = removeBatchByIds(commentIds);
 
         if (remove) {
-            return null;
+            return RestBean.successWithMsg("评论删除成功");
         }else {
             throw new BusinessException(ErrorCode.SERVER_INNER_ERROR);
         }
@@ -144,7 +163,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         Long userId = BaseContext.getCurrentId();
 
         LambdaQueryWrapper<Comment> queryWrapper = new LambdaQueryWrapper<Comment>();
-        queryWrapper.eq(Comment::getParentId, id);
+        queryWrapper.eq(Comment::getId, id);
         Comment comment = getOne(queryWrapper);
         if (Objects.isNull(comment)) {
             throw new BusinessException(ErrorCode.COMMENT_NOT_FOUND);
@@ -195,7 +214,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
      */
     private Map<Long, String> batchGetUsernames(Set<Long> userIds) {
         // 调用支持批量查询的接口
-        List<AccountDetailVo> accounts = accountClient.batchQueryAccounts(userIds).data();
+        List<Long> ids = userIds.stream().toList();
+        List<AccountDetailVo> accounts = accountClient.batchQueryAccounts(ids).data();
 
         Map<Long, String> usernameMap = new HashMap<>();
         for (AccountDetailVo accountDetailVo : accounts) {
@@ -269,5 +289,27 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         vo.setCommenterUsername(usernameMap.get(comment.getUserId()));
         vo.setComments(new ArrayList<>()); //初始化空列表
         return vo;
+    }
+
+    private List<Long> getAllChildrenCommentIds(Long parentId) {
+        List<Long> allChildrenCommentIds = new ArrayList<>();
+        Queue<Long> queue = new LinkedList<>();
+        queue.add(parentId);
+
+        while (!queue.isEmpty()) {
+            Long id = queue.poll();
+            LambdaQueryWrapper<Comment> commentLambdaQueryWrapper = new LambdaQueryWrapper<>();
+            commentLambdaQueryWrapper.eq(Comment::getParentId, id);
+
+            List<Comment> children = list(commentLambdaQueryWrapper);
+            if (!CollectionUtils.isEmpty(children)) {
+                for (Comment comment : children) {
+                    allChildrenCommentIds.add(comment.getId());
+                    queue.add(comment.getId());
+                }
+            }
+        }
+
+        return allChildrenCommentIds;
     }
 }

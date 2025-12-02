@@ -10,5 +10,7 @@ import java.util.List;
 
 @Mapper
 public interface CollectMapper extends BaseMapper<Collect> {
-    int batchInsertIgnore(@Param("userId") Long userId, @Param("courseIds") List<Long> courseIds, @Param("collectTime") LocalDateTime collectTime);
+    int batchInsertIgnore(@Param("userId") Long userId, @Param("courseIds") List<Long> courseIds, @Param("collectTime") LocalDateTime collectTime, @Param("ids") List<Long> ids);
+
+    List<Long> getCourseIdsByUserId(@Param("userId") Long userId);
 }

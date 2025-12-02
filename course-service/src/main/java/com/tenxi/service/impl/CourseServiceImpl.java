@@ -1,18 +1,21 @@
 package com.tenxi.service.impl;
 
+import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.tenxi.client.AccountClient;
+import com.tenxi.entity.es.CourseDocument;
+import com.tenxi.entity.msg.CourseESSyncMessage;
 import com.tenxi.entity.po.Collect;
 import com.tenxi.entity.vo.CourseSimpleVO;
 import com.tenxi.enums.ErrorCode;
 import com.tenxi.exception.BusinessException;
-import com.tenxi.mapper.CollectMapper;
-import com.tenxi.notification.entity.po.NotificationType;
-import com.tenxi.notification.service.NotificationTypeService;
+import com.tenxi.mapper.*;
+import com.tenxi.utils.AliyunOssUtil;
 import com.tenxi.utils.BaseContext;
+import com.tenxi.utils.HmacSigner;
 import com.tenxi.utils.RestBean;
 import com.tenxi.entity.dto.CoursePublishDTO;
 import com.tenxi.entity.po.Category;
@@ -20,49 +23,58 @@ import com.tenxi.entity.po.Course;
 import com.tenxi.entity.po.Tag;
 import com.tenxi.entity.vo.AccountDetailVo;
 import com.tenxi.entity.vo.CourseVO;
-import com.tenxi.mapper.CategoryMapper;
-import com.tenxi.mapper.CourseMapper;
-import com.tenxi.mapper.TagMapper;
 import com.tenxi.service.CourseService;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.elasticsearch.index.query.MultiMatchQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.SearchHit;
+import org.springframework.data.elasticsearch.core.query.Criteria;
+import org.springframework.data.elasticsearch.core.query.CriteriaQuery;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestTemplate;
-
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import static com.tenxi.common.CourseConstStr.CACHE_COURSE_COLLECT_HASH;
-import static com.tenxi.common.CourseConstStr.CACHE_COURSE_COLLECT_SET;
 
-
-//TODO 将用户上传的视频存储到视频库，并在数据库中存储获取视频的uri
+@Slf4j
 @Service
 public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> implements CourseService {
     @Resource
     private RabbitTemplate rabbitTemplate;
+
     @Resource
     private CourseMapper courseMapper;
+
     @Resource
     private TagMapper tagMapper;
+
     @Resource
     private AccountClient accountClient;
-    @Resource
-    private CategoryMapper categoryMapper;
+
     @Resource
     private CollectMapper collectMapper;
+
+
+    @Resource
+    private CourseSubscribeMapper subscribeMapper;
+
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-    @Resource
-    private NotificationTypeService notificationTypeService;
 
-    private static final String Hash_PREFIX = CACHE_COURSE_COLLECT_HASH;
+    @Resource
+    private AliyunOssUtil ossUtil;
+
+    @Resource
+    private ElasticsearchOperations elasticsearchOperations;
+
 
     /**
      * 老师发布课程
@@ -71,23 +83,72 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
      */
     @Override
     public RestBean<String> publishCourse(CoursePublishDTO dto) {
-        //1.存储视频
-        Long pusherId = BaseContext.getCurrentId();
-        Course course = new Course();
-        BeanUtils.copyProperties(dto, course);
-        course.setPusherId(pusherId);
-        if(save(course)) {
-            //2.处理标签,选择利用消息队列异步处理
-            rabbitTemplate.convertAndSend("online.edu.direct",
-                    "tag_save_op",
-                    course.getId().toString() + "," + dto.getTags());
+        //1. 判断文件是否存在
+        if (dto.getVideoFile() == null || dto.getVideoFile().isEmpty()) {
+            throw new BusinessException(ErrorCode.FILE_EMPTY);
+        }
 
-            return RestBean.successWithMsg("发布视频成功");
-        }else {
+
+        //2.存储课程视频信息
+        Long pusherId = BaseContext.getCurrentId();
+        String videoUrl = null;
+        String coverUrl = null;
+
+        try {
+            //1.向oss中存储 获取url
+            videoUrl = ossUtil.uploadVideo(dto.getVideoFile(), null);
+
+            if (dto.getImageFile() != null || ! dto.getImageFile().isEmpty()) {
+                coverUrl = ossUtil.uploadCoverImage(dto.getImageFile(), null);
+            }
+
+            //2.向数据库中存储
+            Course course = new Course();
+            BeanUtils.copyProperties(dto, course);
+            course.setPusherId(pusherId);
+            course.setVideoUrl(videoUrl);
+            course.setCoverImageUrl(coverUrl);
+            course.setCreateTime(LocalDateTime.now());
+            course.setUpdateTime(LocalDateTime.now());
+
+            if (save(course)) {
+                // 3.如果数据库保存成功，重命名OSS文件（加上课程ID）
+                if (videoUrl != null) {
+                    String newVideoUrl = ossUtil.renameFile(videoUrl, "videos", course.getId(), "video");
+                    course.setVideoUrl(newVideoUrl);
+                }
+                if (coverUrl != null) {
+                    String newCoverUrl = ossUtil.renameFile(coverUrl, "covers", course.getId(), "cover");
+                    course.setCoverImageUrl(newCoverUrl);
+                }
+
+                // 更新课程记录
+                updateById(course);
+
+                //4.处理标签
+                rabbitTemplate.convertAndSend("online.edu.direct",
+                        "tag_save_op",
+                        course.getId().toString() + "," + dto.getTags());
+
+                //5.处理ES数据同步
+                CourseESSyncMessage msg = new CourseESSyncMessage(course.getId(), CourseESSyncMessage.Operation.CREATE);
+                rabbitTemplate.convertAndSend("online.edu.direct", "course_sync_op", msg);
+            } else {
+                // 数据库保存失败，删除已上传的OSS文件
+                deleteOssFiles(videoUrl, coverUrl);
+                throw new BusinessException(ErrorCode.COURSE_PUBLISH_FAILED);
+            }
+        }catch (Exception e){
+            //无论任何异常都尝试从oss中删除文件
+            deleteOssFiles(videoUrl, coverUrl);
+            log.error("发布课程失败", e);
             throw new BusinessException(ErrorCode.COURSE_PUBLISH_FAILED);
         }
 
+        return RestBean.successWithMsg("课程发布成功");
     }
+
+
 
     /**
      * 根据用户的输入内容查找相应的课程
@@ -96,70 +157,25 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
      * @return
      */
     @Override
-    public RestBean<List<CourseVO>> queryCourse(String des) {
-        Long userId = BaseContext.getCurrentId();
-        QueryWrapper<Course> queryWrapper = new QueryWrapper<>();
+    public RestBean<List<CourseDocument>> queryCourse(String des) {
+        try {
+            Criteria criteria = new Criteria("title").contains(des)
+                    .or("introduction").contains(des)
+                    .or("category").contains(des)
+                    .or("tag.tagName").contains(des);
 
-        //构造查询条件
-        /*
-        a.查询用户的选择是否为分类
-        b.查询用的选择是否匹配tag
-        c.查询用的选择和课程的标题和简介是否有一致的
-         */
+            CriteriaQuery criteriaQuery = new CriteriaQuery(criteria);
 
-        // 1. 检查输入是否为分类
-        List<Category> categories = categoryMapper.selectList(new QueryWrapper<Category>()
-                .like("label", des));
-        List<Long> categoryIds = new ArrayList<>();
-        if (!categories.isEmpty()) {
-            for (Category category : categories) {
-                categoryIds.addAll(categoryMapper.getAllSubCategoryIds(category.getId()));
-            }
+            List<CourseDocument> results = elasticsearchOperations.search(criteriaQuery, CourseDocument.class).stream()
+                    .map(SearchHit::getContent)
+                    .toList();
+            return RestBean.successWithData(results);
+        } catch (Exception e) {
+            log.error("搜索课程失败, keyword: {}", des, e);
+            throw new BusinessException(ErrorCode.SEARCH_FAILED);
         }
 
-        // 检查输入是否为标签
-        Tag tag = tagMapper.selectOne(new QueryWrapper<Tag>().eq("name", des));
 
-        // 2. 构建动态查询条件
-        queryWrapper.and(qw -> {
-            boolean hasCondition = false;
-
-            // 分类条件
-            if (! categoryIds.isEmpty()) {
-                //去重（在lambda表达式中，外部变量要么被设置为final，要么只赋值一次即effective final）
-                List<Long> distinctCategoryIds = new ArrayList<>(categoryIds);
-                distinctCategoryIds = distinctCategoryIds.stream().distinct().collect(Collectors.toList());
-                qw.in("category_id", distinctCategoryIds);
-                hasCondition = true;
-            }
-
-            // 标签条件
-            if (tag != null) {
-                if (hasCondition) {
-                    qw.or(); // 添加OR连接
-                }
-                qw.apply("EXISTS (SELECT 1 FROM course_tag WHERE course_tag.course_id = course.id AND tag_id = {0})", tag.getId());
-                hasCondition = true;
-            }
-
-            // 标题和简介的模糊查询条件（始终添加）
-            if (hasCondition) {
-                qw.or();
-            }
-            qw.nested(nestedQw ->
-                    nestedQw.like("title", des)
-                            .or()
-                            .like("introduction", des)
-            );
-        });
-
-        // 3. 执行查询
-        List<Course> courses = courseMapper.selectList(queryWrapper);
-
-        // 4. 处理结果，转换为VO
-        List<CourseVO> res = transVo(courses, userId);
-
-        return RestBean.successWithData(res);
     }
 
     /**
@@ -168,47 +184,20 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
      * @return
      */
     @Override
-    public RestBean<List<CourseVO>> getByTag(Long id) {
-        Long userId = BaseContext.getCurrentId();
-        QueryWrapper<Course> queryWrapper = new QueryWrapper<>();
-        queryWrapper.apply("SELECT course_id FROM course_tag WHERE tag_id = " + id);
-        List<Course> courses = courseMapper.selectList(queryWrapper);
+    public RestBean<List<CourseDocument>> getByTag(Long id) {
+        try {
+            Criteria criteria = new Criteria("tags.tagId").is(id.toString());
+            CriteriaQuery criteriaQuery = new CriteriaQuery(criteria);
 
-        List<CourseVO> courseVOS = transVo(courses, userId);
+            List<CourseDocument> documents = elasticsearchOperations.search(criteriaQuery, CourseDocument.class).stream()
+                    .map(SearchHit::getContent)
+                    .toList();
 
-        return RestBean.successWithData(courseVOS);
-    }
-
-    /**
-     * 用户收藏课程
-     * 1.先将收藏的记录存储在redis(使用set缓存）中，方便用户及时得到反馈
-     * 2.将用户操作使用Hash结构存储，定时任务写入时看最后的值
-     * 目的:防止恶意点击使得数据库崩溃
-     * @param id
-     * @return
-     */
-    @Override
-    public String collectCourse(Long id) {
-        Long currentId = BaseContext.getCurrentId();
-        String key_hash = CACHE_COURSE_COLLECT_HASH + currentId;
-        String key_set = CACHE_COURSE_COLLECT_SET + currentId;
-
-        //1.修改用户操作的最后 获取当前操作类型（取反）
-        String lastAction = (String) redisTemplate.opsForHash().get(key_hash, id.toString());
-        int newAction = ("0".equals(lastAction) || lastAction == null) ? 1 : 0;
-
-        //记录最新操作
-        redisTemplate.opsForHash().put(key_hash, id.toString(), String.valueOf(newAction));
-        redisTemplate.expire(key_hash, 1, TimeUnit.HOURS);
-
-        //修改set中的值
-        if(Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(key_set, id.toString()))){
-            redisTemplate.opsForSet().remove(key_set, id.toString());
-        }else {
-            redisTemplate.opsForSet().add(key_set, id.toString());
+            return RestBean.successWithData(documents);
+        }catch (Exception e){
+            log.error("根据Tag的id搜索课程失败, id: {}",id , e);
+            throw new BusinessException(ErrorCode.SEARCH_FAILED);
         }
-
-        return null;
     }
 
     /**
@@ -249,16 +238,42 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
      * @return
      */
     @Override
-    public RestBean<String> deleteCourseById(Integer id) {
+    public RestBean<String> deleteCourseById(Long id) {
         Long userId = BaseContext.getCurrentId();
         LambdaQueryWrapper<Course> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Course::getPusherId, userId);
         queryWrapper.eq(Course::getId, id);
-        boolean remove = remove(queryWrapper);
-        if (remove) {
-            return RestBean.successWithMsg("删除课程成功");
+        Course course = getOne(queryWrapper);
+
+        if (course == null) {
+            throw new BusinessException(ErrorCode.COURSE_NOT_FOUND);
         }
-        throw new BusinessException(ErrorCode.COURSE_DEL_FAILED);
+
+        String videoUrl = course.getVideoUrl();
+        String coverImageUrl = course.getCoverImageUrl();
+
+        try {
+            boolean remove = remove(queryWrapper);
+
+            if (remove) {
+                //1. 选择使用异步删除oss文件
+                CompletableFuture.runAsync(() -> {
+                    deleteOssFiles(videoUrl, coverImageUrl);
+                });
+
+                CourseESSyncMessage msg = new CourseESSyncMessage(course.getId(), CourseESSyncMessage.Operation.DELETE);
+                rabbitTemplate.convertAndSend("online.edu.direct", "course_sync_op", msg);
+
+                log.info("课程删除成功, courseId: {}, userId: {}", id, userId);
+                return RestBean.successWithMsg("删除课程成功");
+            }else {
+                throw new BusinessException(ErrorCode.COURSE_DEL_FAILED);
+            }
+        }catch (Exception e){
+            log.error("删除课程失败, courseId: {}", id, e);
+            throw new BusinessException(ErrorCode.COURSE_DEL_FAILED);
+        }
+
     }
 
     /**
@@ -273,55 +288,174 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             throw new IllegalArgumentException("课程ID不能为空");
         }
 
-        LambdaUpdateWrapper<Course> updateWrapper = new LambdaUpdateWrapper<>();
-        updateWrapper.eq(Course::getId, id);
-
-        // 动态设置需要更新的字段
-        if (StringUtils.hasText(dto.getTitle())) {
-            updateWrapper.set(Course::getTitle, dto.getTitle());
-        }
-        if (StringUtils.hasText(dto.getIntroduction())) {
-            updateWrapper.set(Course::getIntroduction, dto.getIntroduction());
-        }
-        if (Objects.nonNull(dto.getOriginPrice())) {
-            updateWrapper.set(Course::getOriginPrice, dto.getOriginPrice());
-        }
-        if (Objects.nonNull(dto.getDiscountPrice())) {
-            updateWrapper.set(Course::getDiscountPrice, dto.getDiscountPrice());
+        // 1. 查询现有课程
+        Course existingCourse = getById(id);
+        if (existingCourse == null) {
+            throw new BusinessException(ErrorCode.COURSE_NOT_FOUND);
         }
 
-        // 执行更新操作
-        boolean updated = update(updateWrapper);
-        if (updated) {
-            //向所有订阅了该课程的用户发送站内通知
-            Map<String, Object> event = new HashMap<>();
-            event.put("event_type", "course_update");
-            event.put("course_id", id);
-            //使用消息队列异步发送信息
-            rabbitTemplate.convertAndSend("online.direct","online-education-notify", event);
-            return RestBean.successWithMsg("课程更新成功");
-        }else {
+        // 2. 验证权限：只有课程发布者可以更新
+        Long currentUserId = BaseContext.getCurrentId();
+        if (!existingCourse.getPusherId().equals(currentUserId)) {
+            throw new BusinessException(ErrorCode.COURSE_NOT_AUTH);
+        }
+
+        String oldVideoUrl = existingCourse.getVideoUrl();
+        String oldCoverUrl = existingCourse.getCoverImageUrl();
+        String newVideoUrl = null;
+        String newCoverUrl = null;
+
+        try {
+            // 3. 处理视频文件更新
+            if (Boolean.TRUE.equals(dto.getUpdateVideo()) && dto.getVideoFile() != null
+                    && !dto.getVideoFile().isEmpty()) {
+                newVideoUrl = ossUtil.uploadVideo(dto.getVideoFile(), id);
+            }
+
+            // 4. 处理封面图片更新
+            if (Boolean.TRUE.equals(dto.getUpdateCover()) && dto.getImageFile() != null
+                    && !dto.getImageFile().isEmpty()) {
+                newCoverUrl = ossUtil.uploadCoverImage(dto.getImageFile(), id);
+            }
+
+            // 5. 构建更新条件
+            LambdaUpdateWrapper<Course> updateWrapper = new LambdaUpdateWrapper<>();
+            updateWrapper.eq(Course::getId, id);
+
+            // 动态设置需要更新的字段
+            if (StringUtils.hasText(dto.getTitle())) {
+                updateWrapper.set(Course::getTitle, dto.getTitle());
+            }
+            if (StringUtils.hasText(dto.getIntroduction())) {
+                updateWrapper.set(Course::getIntroduction, dto.getIntroduction());
+            }
+            if (Objects.nonNull(dto.getOriginPrice())) {
+                updateWrapper.set(Course::getOriginPrice, dto.getOriginPrice());
+            }
+            if (Objects.nonNull(dto.getDiscountPrice())) {
+                updateWrapper.set(Course::getDiscountPrice, dto.getDiscountPrice());
+            }
+            if (dto.getCategoryId() != null) {
+                updateWrapper.set(Course::getCategoryId, dto.getCategoryId());
+            }
+
+            // 更新文件URL
+            if (newVideoUrl != null) {
+                updateWrapper.set(Course::getVideoUrl, newVideoUrl);
+            }
+            if (newCoverUrl != null) {
+                updateWrapper.set(Course::getCoverImageUrl, newCoverUrl);
+            }
+
+            updateWrapper.set(Course::getUpdateTime, LocalDateTime.now());
+
+            // 6. 执行更新操作
+            boolean updated = update(updateWrapper);
+
+            if (updated) {
+                // 7. 更新成功后删除旧文件
+                if (newVideoUrl != null && oldVideoUrl != null) {
+                    ossUtil.deleteFile(oldVideoUrl);
+                }
+                if (newCoverUrl != null && oldCoverUrl != null) {
+                    ossUtil.deleteFile(oldCoverUrl);
+                }
+
+                //8. 课程视频更新发送通知
+                if (Boolean.TRUE.equals(dto.getUpdateVideo())) {
+                    sendCourseUpdateNotification(id, currentUserId);
+                }
+
+                // 同步到ES
+                CourseESSyncMessage syncMessage = new CourseESSyncMessage(id, CourseESSyncMessage.Operation.UPDATE);
+                rabbitTemplate.convertAndSend("online.edu.direct", "course_sync_op", syncMessage);
+
+                return RestBean.successWithMsg("课程更新成功");
+            }else {
+                //数据库更新失败就 删除新文件
+                deleteOssFiles(newVideoUrl, newCoverUrl);
+                throw new BusinessException(ErrorCode.COURSE_UPDATE_FAILED);
+            }
+        } catch (Exception e) {
+            deleteOssFiles(oldVideoUrl, oldCoverUrl);
             throw new BusinessException(ErrorCode.COURSE_UPDATE_FAILED);
         }
 
-
     }
+
+
 
     /**
      * 获取课程的订阅用户的id
-     * @param id
+     * @param courseId
      * @return
      */
     @Override
-    public List<Long> getCourseSubscribers(Long id) {
-        return courseMapper.getCourseSubscribers(id);
+    public List<Long> getCourseSubscribers(Long courseId) {
+        return subscribeMapper.getCourseSubscribers(courseId);
     }
 
     /**
-     * 将Course转换为CourseVO的方法封装
-     * @param course
+     * 批量获取课程信息
+     * @param courseIds
      * @return
      */
+    @Override
+    public List<CourseVO> getBatchCourses(List<Long> courseIds) {
+        LambdaQueryWrapper<Course> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.in(Course::getId, courseIds);
+
+        List<Course> courses = courseMapper.selectList(queryWrapper);
+        Long userId = BaseContext.getCurrentId();
+
+        return transVo(courses, userId);
+    }
+
+
+    private void deleteOssFiles(String videoUrl, String coverUrl) {
+        try {
+            if (videoUrl != null) {
+                ossUtil.deleteFile(videoUrl);
+            }
+            if (coverUrl != null) {
+                ossUtil.deleteFile(coverUrl);
+            }
+        } catch (Exception e) {
+            // 不抛出异常，避免掩盖原始异常
+            log.error("删除OSS文件失败", e);
+        }
+    }
+
+    private boolean isCollect(Long userId, Long courseId) {
+        // 查找collect表，如果收藏了isCollect字段就为1，否则为0
+        LambdaQueryWrapper<Collect> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Collect::getCourseId, courseId);
+        wrapper.eq(Collect::getUserId, userId);
+
+        Collect collect = collectMapper.selectOne(wrapper);
+        return collect != null;
+    }
+
+    private void sendCourseUpdateNotification(Long courseId, Long userId) {
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("event_type", "course_update");
+            event.put("course_id", courseId);
+            event.put("update_time", LocalDateTime.now());
+
+            String signature = HmacSigner.sign(userId.toString());
+            event.put("X-Signature", signature);
+            event.put("X-User-Id", userId);
+
+
+            rabbitTemplate.convertAndSend("online.direct", "online-education-notify", event);
+            log.info("课程更新通知发送成功, courseId: {}", courseId);
+        } catch (Exception e) {
+            log.error("发送课程更新通知失败, courseId: {}", courseId, e);
+        }
+    }
+
+    //将Course转换为CourseVO的方法封装
     private List<CourseVO> transVo(List<Course> course, Long userId) {
         if (course == null) {
             return null;
@@ -356,60 +490,5 @@ public class CourseServiceImpl extends ServiceImpl<CourseMapper, Course> impleme
             }
             return vo;
         }).toList();
-    }
-
-
-    private boolean isCollect(Long userId, Long courseId) {
-        //先从redis中查看用户是否收藏了该课程
-        String key = CACHE_COURSE_COLLECT_SET + userId;
-        if(Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(key, courseId.toString()))) {
-            return true;
-        }
-
-        // 查找collect表，如果收藏了isCollect字段就为1，否则为0
-        LambdaQueryWrapper<Collect> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Collect::getCourseId, courseId);
-        wrapper.eq(Collect::getUserId, userId);
-
-        Collect collect = collectMapper.selectOne(wrapper);
-        return collect != null;
-    }
-
-
-    /**
-     * 定时任务 处理redis中课程收藏情况 存入或者删除相应的数据库数据
-     */
-    @Scheduled(fixedDelay = 60000)
-    public void synCollectOperation() {
-        Set<String> keys = redisTemplate.keys(Hash_PREFIX+"*");
-        if(keys == null) return;
-
-        for (String key : keys) {
-            //处理每一个用户的收藏的改变
-            Long userId = Long.parseLong(key.substring(Hash_PREFIX.length()));
-            Map<Object, Object> operations = redisTemplate.opsForHash().entries(key);
-
-            List<Long> toAdd = new ArrayList<>();
-            List<Long> toRemove = new ArrayList<>();
-
-            operations.forEach((courseStrId, action) -> {
-                Long courseId = Long.parseLong(courseStrId.toString());
-                if (action.equals("1")) {
-                    toAdd.add(courseId);
-                }else {
-                    toRemove.add(courseId);
-                }
-            });
-
-            if(!toAdd.isEmpty()) {
-                collectMapper.batchInsertIgnore(userId, toAdd, LocalDateTime.now());
-            }
-            if(!toRemove.isEmpty()) {
-                collectMapper.deleteByIds(toRemove);
-            }
-
-            //处理完之后删除这个键
-            redisTemplate.delete(key);
-        }
     }
 }

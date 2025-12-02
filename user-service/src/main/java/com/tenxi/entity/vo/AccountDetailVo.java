@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 public class AccountDetailVo {
     private Long id;
     private String email;
+    private String username;
     private String avatar;
     private LocalDateTime registerTime;
 

@@ -20,8 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 public class SignController {
     @Resource
-    private ControllerHandler controllerHandler;
-    @Resource
     private SignService signService;
 
     /**
@@ -33,13 +31,12 @@ public class SignController {
             description = "用户进行每日打卡操作，使用redis bitmap存储",
             responses = {
                     @ApiResponse(responseCode = "200", description = "打卡成功"),
-                    @ApiResponse(responseCode = "400", description = "重复打卡或打卡失败")
+                    @ApiResponse(responseCode = "1009", description = "重复打卡或打卡失败")
             }
     )
     @GetMapping
     public RestBean<String> sign() {
-        return controllerHandler.messageHandler(() ->
-                signService.sign());
+        return signService.sign();
     }
 
     /**

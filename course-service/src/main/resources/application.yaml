@@ -1,6 +1,10 @@
 server:
   port: 8082
 spring:
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
   data:
     redis:
       port: 6379
@@ -31,6 +35,8 @@ spring:
     loadbalancer:
       retry:
         enabled: true
+  mvc:
+    static-path-pattern: /static/**
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
@@ -56,12 +62,25 @@ feign:
         connectTimeout: 5000
         readTimeout: 5000
         loggerLevel: BASIC
+aliyun:
+  oss:
+    endpoint: oss-cn-beijing.aliyuncs.com
+    access-key-id: LTAI5tHDUT9PTELhR3AHVnzW
+    access-key-secret: Ni7qvQjwigVDsz7PZPjC9h3K6PUMFA
+    bucket-name: online-education10
+    folder: courses/
 online:
   education:
     secret: XXssssjkewofokopweejfjfwwdlwdddhhhh
 oe:
+  elasticsearch:
+    auto-create-index: true
+    index-setting:
+      shards: 1   #分片数量
+      replicas: 1 #副本数量
   auth:
     include-paths:
       - "/users/login"
       - "/users/register"
       - "/users/ask-code"
+      - "/category/tree"

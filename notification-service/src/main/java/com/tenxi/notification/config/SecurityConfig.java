@@ -1,7 +1,6 @@
 package com.tenxi.notification.config;
 
 import com.tenxi.filter.HeaderAuthFilter;
-import com.tenxi.notification.service.impl.LoginServiceImpl;
 import com.tenxi.utils.RestBean;
 import jakarta.annotation.Resource;
 import org.springframework.context.annotation.Bean;
@@ -22,24 +21,17 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 )
 public class SecurityConfig {
     @Resource
-    private LoginServiceImpl loginService;
-    @Resource
     private HeaderAuthFilter headerAuthFilter;
 
     public SecurityConfig() {
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests((authorize) -> {
-            ((AuthorizeHttpRequestsConfigurer.AuthorizedUrl)authorize.anyRequest()).authenticated();
-        }).formLogin(AbstractHttpConfigurer::disable).rememberMe((rememberMe) -> {
-            rememberMe.userDetailsService(this.loginService);
+
+            authorize.requestMatchers("/ws/notification/**").permitAll()
+                    .anyRequest().authenticated();
         }).addFilterBefore(this.headerAuthFilter, UsernamePasswordAuthenticationFilter.class).csrf(AbstractHttpConfigurer::disable).exceptionHandling((handler) -> {
             handler.authenticationEntryPoint((req, res, ex) -> {
                 res.setContentType("application/json;charset=utf-8");

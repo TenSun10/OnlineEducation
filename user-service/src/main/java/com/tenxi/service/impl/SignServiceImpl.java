@@ -1,5 +1,7 @@
 package com.tenxi.service.impl;
 
+import com.tenxi.enums.ErrorCode;
+import com.tenxi.exception.BusinessException;
 import com.tenxi.utils.BaseContext;
 import com.tenxi.utils.RestBean;
 import com.tenxi.service.SignService;
@@ -28,7 +30,7 @@ public class SignServiceImpl implements SignService {
      * @return
      */
     @Override
-    public String sign() {
+    public RestBean<String> sign() {
         String key = getRedisKey();
         log.info("用户" + key + "正在打卡");
 
@@ -36,9 +38,9 @@ public class SignServiceImpl implements SignService {
 
         Boolean b = stringRedisTemplate.opsForValue().setBit(key, day - 1, true);
         if (Boolean.TRUE.equals(b)) {
-            return null;
+            return RestBean.successWithMsg("打卡成功");
         }
-        return "打卡失败, 请重试";
+        throw new BusinessException(ErrorCode.SIGN_IN_DUPLI_OR_ERROR);
     }
 
     /**

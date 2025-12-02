@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @Resource
+@RestController
 @RequestMapping("/comments")
 public class CommentController {
     @Resource

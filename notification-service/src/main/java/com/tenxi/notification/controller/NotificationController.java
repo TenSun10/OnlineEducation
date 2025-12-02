@@ -41,7 +41,7 @@ public class NotificationController {
      */
     @Hidden
     @GetMapping("/read/{id}")
-    public RestBean<String> markAsRead(@PathVariable Long id) {
+    public RestBean<String> markAsRead(@PathVariable("id") Long id) {
         return notificationService.markAsRead(id);
     }
 
@@ -53,7 +53,7 @@ public class NotificationController {
             }
     )
     @GetMapping("/{id}")
-    public RestBean<NotificationVO> getNotificationById(@PathVariable Long id) {
+    public RestBean<NotificationVO> getNotificationById(@PathVariable("id") Long id) {
         return notificationService.getNotificationVOById(id);
     }
 }

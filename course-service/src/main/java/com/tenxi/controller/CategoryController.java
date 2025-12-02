@@ -54,7 +54,7 @@ public class CategoryController {
     )
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     @GetMapping("/status/{id}")
-    public RestBean<String> changeStatus(@PathVariable Long id) {
+    public RestBean<String> changeStatus(@PathVariable("id") Long id) {
         return categoryService.changeStatus(id);
     }
 }

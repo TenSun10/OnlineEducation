@@ -19,14 +19,14 @@ public class Course {
     private Long categoryId;
     private String title;
     private String introduction;
-    private String url;
+    private String videoUrl;
     private Long pusherId;
     private Float discountPrice;
     private Float originPrice;
-    private String coverImage;
-    private float rating;
+    private String coverImageUrl;
+    private Float rating;
     private Integer commentCount;
-    private Integer enrolledCount;
+    private Integer enrolledCount; //订阅人数
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

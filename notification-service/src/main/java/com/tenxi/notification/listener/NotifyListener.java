@@ -13,13 +13,20 @@ import com.tenxi.notification.entity.vo.CourseSimpleVO;
 import com.tenxi.notification.mapper.NotificationMapper;
 import com.tenxi.notification.service.NotificationTypeService;
 import com.tenxi.notification.service.WebSocketService;
+import com.tenxi.utils.BaseContext;
+import com.tenxi.utils.HmacSigner;
 import jakarta.annotation.Resource;
 import lombok.extern.java.Log;
 import org.springframework.amqp.rabbit.annotation.*;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,14 +47,16 @@ import java.util.Map;
 public class NotifyListener {
     @Resource
     private NotificationMapper notificationMapper;
-    @Resource
-    private RabbitTemplate rabbitTemplate;
+
     @Resource
     private NotificationTypeService notificationTypeService;
+
     @Resource
     private AccountClient accountClient;
+
     @Resource
     private CourseClient courseClient;
+
     @Resource
     private WebSocketService webSocketService;
 
@@ -59,6 +68,20 @@ public class NotifyListener {
     @RabbitHandler
     public void handleNotificationEvent(Map<String, Object> event) throws JsonProcessingException {
         String eventType = (String) event.get("event_type");
+
+        log.info("🎯 RabbitMQ收到消息，事件类型: " +  eventType);
+        log.info("完整消息内容: " +  event);
+
+        Long userId = (Long) event.get("X-User-Id");
+        String signature = (String) event.get("X-Signature");
+
+        if (userId != null && signature != null && HmacSigner.verify(userId.toString(), signature)) {
+            // 设置到BaseContext
+            BaseContext.setCurrentId(userId);
+        }else {
+            log.warning("消息中缺少有效的认证信息，无法设置上下文");
+            return;
+        }
 
         switch (eventType) {
             case COMMENT_TYPE:
@@ -128,7 +151,7 @@ public class NotifyListener {
 
         //3. 生成通知的内容
         if (replier == null) {
-            log.warning("无法获取回复者或课程信息");
+            log.warning("无法获取回复者或课程信息" + "发送者" + pusherId);
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
 
@@ -156,7 +179,7 @@ public class NotifyListener {
         CourseSimpleVO course = courseClient.getCourse(courseId);
         Long pusherId = (Long) event.get("pusher_id"); //评论的发布者
         AccountDetailVo account = accountClient.queryAccountById(pusherId).data();
-        String commentId = (String) event.get("comment_id");//发布的评论的id
+        Long commentId = (Long) event.get("comment_id");//发布的评论的id
 
         //3. 发送和保存通知
         String link = String.format("/courses/%s/comments/%s", courseId, commentId);
@@ -165,6 +188,7 @@ public class NotifyListener {
     }
 
     private void createAndSendNotification(Long typeId, String content, Long receiverId, Long senderId, String link) throws JsonProcessingException {
+        log.info("🎯 开始createAndSendNotification - 类型: " + typeId + ", 接收者: " + receiverId + "  , 内容: " + content);
         //1. 将通知存入数据库
         Notification notification = new Notification();
         notification.setTypeId(typeId);
@@ -172,8 +196,12 @@ public class NotifyListener {
         notification.setReceiverId(receiverId);
         notification.setPusherId(senderId);
         notification.setLink(link);
-        notification.setCreatedTime(LocalDateTime.now());
+        notification.setCreateTime(LocalDateTime.now());
+        log.info("线程：" + Thread.currentThread().getId() + "将要向数据库插入notification");
+
+        log.info("📝 准备插入数据库 - 线程: " +  Thread.currentThread().getId());
         notificationMapper.insert(notification);
+        log.info("✅ 数据库插入完成 - 通知ID: " +  notification.getId());
 
         //2. 使用WebSocket发送给用户
         Map<String, Object> wsMessage = new HashMap<>();
@@ -181,6 +209,13 @@ public class NotifyListener {
         wsMessage.put("content", content);
         wsMessage.put("type", "notification");
         wsMessage.put("link", link);
-        webSocketService.sendToUser(receiverId, wsMessage);
+
+        log.info("准备向用户 " + receiverId + " 发送WebSocket通知，内容: " + content);
+        try {
+            webSocketService.sendToUser(receiverId, wsMessage);
+            log.info("WebSocket发送请求完成，用户: "+ receiverId + ", 通知ID: " +  notification.getId());
+        } catch (Exception e) {
+            log.warning("WebSocket发送异常，用户: " + receiverId + ", 错误: " + e.getMessage());
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.tenxi.controller;
 
+import com.tenxi.entity.es.CourseDocument;
 import com.tenxi.entity.po.Course;
 import com.tenxi.entity.po.Tag;
 import com.tenxi.entity.vo.CourseVO;
@@ -28,7 +29,7 @@ public class TagController {
             description = "用户点击的标签查找相关的课程"
     )
     @GetMapping("/{id}")
-    public RestBean<List<CourseVO>> getCoursesByTagId(@PathVariable Long id) {
+    public RestBean<List<CourseDocument>> getCoursesByTagId(@PathVariable("id") Long id) {
         return courseService.getByTag(id);
     }
 }

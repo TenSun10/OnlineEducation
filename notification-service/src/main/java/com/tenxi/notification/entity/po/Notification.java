@@ -18,5 +18,5 @@ public class Notification {
     //link的作用是用户点击实现跳转
     private String link;
     private Integer isRead;
-    private LocalDateTime createdTime;
+    private LocalDateTime createTime;
 }

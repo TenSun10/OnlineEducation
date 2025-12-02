@@ -1,24 +1,26 @@
 package com.tenxi.notification.config;
 
+import com.tenxi.notification.handler.NotificationWebSocketHandler;
+import com.tenxi.notification.interceptor.AuthHandshakeInterceptor;
+import com.tenxi.notification.manager.WebSocketSessionManager;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
-import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
-import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
-import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.*;
 
 @Configuration
-@EnableWebSocketMessageBroker
-public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
-    public WebSocketConfig() {
-    }
+@EnableWebSocket
+@RequiredArgsConstructor
+public class WebSocketConfig implements WebSocketConfigurer {
 
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint(new String[]{"/ws"}).setAllowedOrigins(new String[]{"*"}).withSockJS();
-    }
+    private final WebSocketSessionManager sessionManager;
+    private final AuthHandshakeInterceptor authHandshakeInterceptor;
 
-    public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker(new String[]{"/topic", "/user"});
-        registry.setApplicationDestinationPrefixes(new String[]{"/app"});
-        registry.setUserDestinationPrefix("/user");
+
+    @Override
+    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        registry.addHandler(new NotificationWebSocketHandler(sessionManager), "/ws/notification")
+                .addInterceptors(authHandshakeInterceptor)
+                .setAllowedOrigins("*");
     }
 }

@@ -9,7 +9,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 //启用定时任务
 @EnableScheduling
-@EnableFeignClients
+@EnableFeignClients(basePackages = "com.tenxi.order.client")
 @ImportAutoConfiguration({FeignAutoConfiguration.class})
 @SpringBootApplication(scanBasePackages = "com.tenxi")
 public class OrderServiceApplication {

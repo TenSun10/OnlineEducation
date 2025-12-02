@@ -24,6 +24,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import static com.tenxi.utils.ConstStr.ASK_CODE_REQUEST_LIMIT;
 import static com.tenxi.utils.ConstStr.VERIFY_CODE;
 
 
@@ -39,27 +40,51 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
     private UserMapper userMapper;
 
     /**
-     * 获取验证码
+     * 获取验证码 一分钟请求间隔
      * @param email
      * @param type
      * @return
      */
     @Override
     public RestBean<String> askCode(String email, String type) {
-        synchronized (email.intern()) {
-            //生成验证码
-            Random random = new Random();
-            int code = random.nextInt(899999) + 100000;
-            //将验证码存入redis,设置过期时间
-            setRedisCode(email, String.valueOf(code));
-            //利用mq将信息异步发送
-            Map<String, Object> data = new HashMap<>();
-            data.put("email", email);
-            data.put("type", type);
-            data.put("code", String.valueOf(code));
-            mailListener.sendMail(data);
+        //1.请求频率检查
+        String limitKey = ASK_CODE_REQUEST_LIMIT + email;
+        String lastRequestTime = stringRedisTemplate.opsForValue().get(limitKey);
 
-            return RestBean.successWithMsg("验证码获取成功");
+        if (StringUtils.hasText(lastRequestTime)) {
+            long lastTime = Long.parseLong(lastRequestTime);
+            long currentTime = System.currentTimeMillis();
+            // 1分钟内只能请求一次
+            if (currentTime - lastTime < 60 * 1000) {
+                long waitTime = 60 - (currentTime - lastTime) / 1000;
+                return RestBean.failure(1006, "请求过于频繁，请" + waitTime + "秒后再试");
+            }
+        }
+
+        synchronized (email.intern()) {
+            try {
+                // 2. 记录本次请求时间
+                stringRedisTemplate.opsForValue().set(limitKey,
+                        String.valueOf(System.currentTimeMillis()), 1, TimeUnit.MINUTES);
+
+                // 4. 发送验证码业务逻辑
+                Random random = new Random();
+                int code = random.nextInt(899999) + 100000;
+                setRedisCode(email, String.valueOf(code));
+
+                Map<String, Object> data = new HashMap<>();
+                data.put("email", email);
+                data.put("type", type);
+                data.put("code", String.valueOf(code));
+                mailListener.sendMail(data);
+
+                return RestBean.successWithMsg("验证码获取成功");
+
+            } catch (Exception e) {
+                // 如果发送失败，清除限制记录，允许用户重试
+                stringRedisTemplate.delete(limitKey);
+                throw e;
+            }
         }
     }
 
@@ -104,7 +129,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, Account> implements
         if(account == null) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
-        AccountDetailVo vo = new AccountDetailVo(account.getId(), account.getEmail(), account.getAvatar(), account.getRegisterTime());
+        AccountDetailVo vo = new AccountDetailVo(account.getId(), account.getEmail(), account.getUsername(),account.getAvatar(), account.getRegisterTime());
         return RestBean.successWithData(vo);
     }
 

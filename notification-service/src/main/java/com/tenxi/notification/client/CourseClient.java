@@ -10,12 +10,13 @@ import java.util.List;
 
 @FeignClient(
         name = "OE-course-service",
+        contextId = "notificationCourseClient",
         configuration = {FeignClientConfig.class}
 )
 public interface CourseClient {
     @GetMapping({"/course/simple/{id}"})
-    CourseSimpleVO getCourse(@PathVariable Long id);
+    CourseSimpleVO getCourse(@PathVariable("id") Long id);
 
     @GetMapping("/course/subscribe/{id}")
-    List<Long> getCourseSubscribers(@PathVariable Long id);
+    List<Long> getCourseSubscribers(@PathVariable("id") Long id);
 }

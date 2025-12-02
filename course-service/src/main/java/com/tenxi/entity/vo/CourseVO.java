@@ -15,7 +15,8 @@ public class CourseVO {
     private Long id;
     private String title;
     private String introduction;
-    private String url;
+    private String videoUrl;
+    private String coverImageUrl;
     private Long pusherId;
     private String pusherName;
     private Float originPrice;

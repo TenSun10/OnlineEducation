@@ -15,6 +15,7 @@ import com.tenxi.utils.RestBean;
 import jakarta.annotation.Resource;
 import lombok.extern.java.Log;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Notification> implements NotificationService {
     @Resource
     private NotificationTypeMapper notificationTypeMapper;
+
     @Resource
     private AccountClient accountClient;
 

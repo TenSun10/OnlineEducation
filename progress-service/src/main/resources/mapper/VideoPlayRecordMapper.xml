@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.tenxi.progress.mapper.VideoPlayRecordMapper">
+    <select id="countDistinctSessionDateByUserIdAndDateRange" resultType="java.lang.Long">
+        SELECT COUNT(distinct session_date)
+        FROM video_play_record
+        where user_id = #{userId}
+        AND session_date between #{startDate} AND #{endDate}
+    </select>
+    <select id="selectDailyStatsByDateRange" resultType="java.util.Map">
+        SELECT session_date as date, SUM(total_watch_duration) as duration, COUNT(distinct video_id) as videoCount
+        FROM video_play_record
+        where user_id = #{userId}
+          AND session_date between #{startDate} AND #{endDate}
+        GROUP BY session_date
+        ORDER BY session_date
+    </select>
+    <select id="selectTotalStatsByDateRange" resultType="java.util.Map">
+        SELECT SUM(total_watch_duration) as totalDuration, COUNT(DISTINCT video_id) as totalVideoCount, COUNT(DISTINCT session_date) as sessionCount
+        FROM video_play_record
+        where user_id = #{userId}
+          AND session_date between #{startDate} AND #{endDate}
+    </select>
+    <select id="sumWatchDurationByVideoId" resultType="java.lang.Integer">
+        SELECT COALESCE(SUM(total_watch_duration), 0)
+        FROM video_play_record
+        WHERE video_id = #{videoId}
+    </select>
+</mapper>

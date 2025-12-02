@@ -14,11 +14,13 @@ import java.util.List;
 /**
  * 指定配置文件（配置文件中添加了自定义拦截器）
  */
-@FeignClient(name = "OE-user-service", configuration = FeignClientConfig.class)
+@FeignClient(name = "OE-user-service",
+        contextId = "courseAccountClient",
+        configuration = FeignClientConfig.class)
 public interface AccountClient {
 
     @GetMapping("/users/{id}")
-    RestBean<AccountDetailVo> queryAccountById(@PathVariable Long id);
+    RestBean<AccountDetailVo> queryAccountById(@PathVariable("id") Long id);
 
     @PostMapping("/users/batch")
     RestBean<List<AccountDetailVo>> batchQueryAccounts(@RequestBody List<Long> userIds);

@@ -4,17 +4,8 @@ import com.tenxi.enums.ErrorCode;
 import com.tenxi.exception.BaseException;
 import com.tenxi.exception.BusinessException;
 import com.tenxi.utils.RestBean;
-import feign.FeignException;
-import lombok.extern.java.Log;
 import lombok.extern.slf4j.Slf4j;
-import net.sf.jsqlparser.util.validation.ValidationException;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -34,10 +25,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BaseException.class)
     public RestBean<String> handleBaseException(BaseException ex) {
         ErrorCode errorCode = ex.getErrorCode();
-        log.warn("业务异常: [{}] {}", errorCode.getCode(), errorCode.getMessage());
+        log.warn("业务异常: [{}] {}", errorCode.getCode(), errorCode.getMessage(), ex);
 
         return RestBean.failure(errorCode.getCode(), errorCode.getMessage());
     }
+
 
     /**
      * 参数校验异常

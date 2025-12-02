@@ -1,7 +1,6 @@
 package com.tenxi.pay.config;
 
 import com.tenxi.filter.HeaderAuthFilter;
-import com.tenxi.pay.service.impl.LoginServiceImpl;
 import com.tenxi.utils.RestBean;
 import jakarta.annotation.Resource;
 import org.springframework.context.annotation.Bean;
@@ -14,16 +13,13 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration("paymentSecurityConfig")
 public class SecurityConfig {
     @Resource
-    private LoginServiceImpl loginService;
-    @Resource
     private HeaderAuthFilter headerAuthFilter;
 
-    @Bean
+    @Bean("notificationSecurityFilterChain")
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
                 .formLogin(AbstractHttpConfigurer::disable)
-                .rememberMe(rememberMe -> rememberMe.userDetailsService(loginService))
                 .addFilterBefore(headerAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .csrf(AbstractHttpConfigurer::disable)
                 .exceptionHandling(handler -> {

@@ -25,6 +25,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,7 +74,7 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, OrderDetail> implemen
 
     }
 
-    
+
     @Override
     public String handlerAlipayCallback(HttpServletRequest request) {
         log.info("支付宝回调参数: {}", request.getParameterMap());

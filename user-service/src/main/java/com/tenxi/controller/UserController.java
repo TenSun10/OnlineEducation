@@ -34,8 +34,8 @@ public class UserController {
             description = "用户通过邮箱获取验证码，使用RabbitMQ异步获取"
     )
     @RequestMapping("/ask-code")
-    public RestBean<String> askCode(@RequestParam String email,
-                                    @RequestParam String type) {
+    public RestBean<String> askCode(@RequestParam("email") String email,
+                                    @RequestParam("type") String type) {
         return userService.askCode(email, type);
     }
 
@@ -59,7 +59,7 @@ public class UserController {
             description = "url拼接的id查询用户可对外开放信息"
     )
     @GetMapping("/{id}")
-    public RestBean<AccountDetailVo> getAccount(@PathVariable Long id) {
+    public RestBean<AccountDetailVo> getAccount(@PathVariable("id") Long id) {
         return userService.getAccount(id);
     }
 
@@ -86,14 +86,4 @@ public class UserController {
         return userService.resetPassword(dto);
     }
 
-
-    @Operation(
-            summary = "获取对应的ids的用户信息",
-            description = "批量查询用户信息"
-    )
-    @PreAuthorize("hasRole('ROLE_ADMIN')")
-    @PostMapping("/batch")
-    public RestBean<List<AccountDetailVo>> getBatchAccounts(@RequestBody Set<Long> userIds) {
-        return userService.getBatchAccount(userIds);
-    }
 }

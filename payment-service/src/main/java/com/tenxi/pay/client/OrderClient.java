@@ -7,10 +7,12 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
-@FeignClient(name = "OE-order-service",configuration = FeignClientConfig.class)
+@FeignClient(name = "OE-order-service",
+        contextId = "paymentOrderClient",
+        configuration = FeignClientConfig.class)
 public interface OrderClient {
     @GetMapping("/{id}")
-    RestBean<OrderVO> getOrder(@PathVariable Long id);
+    RestBean<OrderVO> getOrder(@PathVariable("id") Long id);
     @GetMapping("/status/{id}")
-    RestBean<String> changeOrderStatus(@PathVariable Long id);
+    RestBean<String> changeOrderStatus(@PathVariable("id") Long id);
 }

@@ -17,7 +17,7 @@ spring:
         - id: OE-course-service
           uri: lb://OE-course-service
           predicates:
-            - Path=/course/**, /category/**, /tags/**
+            - Path=/course/**, /category/**, /tags/**, /collect/**, /comments/**
         - id: OE-order-service
           uri: lb://OE-order-service
           predicates:
@@ -30,6 +30,10 @@ spring:
           uri: lb://OE-notification-service
           predicates:
             - Path=/notify/**
+        - id: OE-progress-service
+          uri: lb://OE-progress-service
+          predicates:
+            - Path=/learning/**, /history/**, /progress/**
 logging:
   level:
     org.springframework.cloud.gateway: DEBUG
@@ -40,3 +44,4 @@ oe:
       - "/users/login"
       - "/users/register"
       - "/users/ask-code"
+      - "/category/tree"

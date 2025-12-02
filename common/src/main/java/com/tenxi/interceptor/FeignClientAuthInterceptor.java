@@ -1,6 +1,7 @@
 package com.tenxi.interceptor;
 
 import com.tenxi.entity.LoginUser;
+import com.tenxi.utils.BaseContext;
 import com.tenxi.utils.HmacSigner;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
@@ -27,6 +28,13 @@ public class FeignClientAuthInterceptor implements RequestInterceptor {
             String signature = HmacSigner.sign(userId);
             requestTemplate.header("X-Signature", signature)
                     .header("X-User-Id", userId);
+        }else {
+            Long userId = BaseContext.getCurrentId();
+            if (userId != null) {
+                String signature = HmacSigner.sign(String.valueOf(userId));
+                requestTemplate.header("X-Signature", signature)
+                        .header("X-User-Id", String.valueOf(userId));
+            }
         }
     }
 }

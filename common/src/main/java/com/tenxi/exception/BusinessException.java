@@ -1,6 +1,5 @@
 package com.tenxi.exception;
 
-import com.tenxi.decoder.FeignErrorDecoder;
 import com.tenxi.enums.ErrorCode;
 
 public class BusinessException extends BaseException {
